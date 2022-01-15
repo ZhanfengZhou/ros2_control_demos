@@ -12,6 +12,8 @@
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>trajectory_msgs</depend>
+  <depend>math</depend>
+  <depend>numpy</depend>
 
   <test_depend>python3-pytest</test_depend>
 
