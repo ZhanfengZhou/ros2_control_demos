@@ -85,7 +85,7 @@ class PublisherJointTrajectory(Node):
         
         self.joints_goals = []
         for goals_value in self.goals:
-            joints_goals_value = inverse_kinematics(goals_value)
+            joints_goals_value = self.inverse_kinematics(goals_value)
             self.joints_goals.append(joints_goals_value)
         
         
@@ -136,7 +136,7 @@ class PublisherJointTrajectory(Node):
         self.get_logger().info(f"SoftHand grasp center pose: \n {T_ee}")
         
         #check if input goals is okay, the z axis of input must face forward!
-        if (ax >= 0.0) :
+        if (ax >= -0.1) :
             input_goals_ok = True
         else:
             input_goals_ok = False

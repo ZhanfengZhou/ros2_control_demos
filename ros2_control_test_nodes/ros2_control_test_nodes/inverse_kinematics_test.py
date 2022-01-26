@@ -9,9 +9,9 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sensor_msgs.msg import JointState
 
 # Read all end effector euler angle and position from parameters
-goals = [[-90, 90, 90, 0.6, -0.109, 0.3],[-90, 90, 90, 0.4, -0.109, 0.6],[-90, 90, 90, 0.4, -0.3, 0.6],[-90, 90, 90, 0.4, -0.3, 0.3]]
-#[-170, -170, 5, 0.4, -0.109, 0.3]]  ???????????
-#goals = [[-90, 90, 0, 0.7, -0.109, 0.3]] 
+#goals = [[-90.0, 90.0, 90.0, 0.6, -0.109, 0.3],[-90.0, 90.0, 90.0, 0.4, -0.109, 0.6],[-90.0, 90.0, 90.0, 0.4, -0.3, 0.6],[-90.0, 90.0, 90.0, 0.4, -0.3, 0.3]]
+goals = [[-89.9, -179.9, 89.9, 0.4, -0.109, 0.3],]   #okay....should be have 0.1 degree input error to make the ikfastpy code working!!!!!! 
+
 
 
 joints_goals = []
@@ -21,9 +21,12 @@ for goals_value in goals:
     n_joints = ur5_kinematics.getDOF()
         
     #change ZYZ Euler angle to Trans Matrix for end effector (ee)
-    phi = round(math.radians(goals_value[0]),2)
-    theta = round(math.radians(goals_value[1]),2)
-    psi = round(math.radians(goals_value[2]),2)
+    phi = math.radians(goals_value[0])
+    theta = math.radians(goals_value[1])
+    psi = math.radians(goals_value[2])
+    #phi = round(math.radians(goals_value[0]),5)
+    #theta = round(math.radians(goals_value[1]),5)
+    #psi = round(math.radians(goals_value[2]),5)
     print(phi,theta,psi)
     x = goals_value[3]
     y = goals_value[4]
@@ -36,24 +39,35 @@ for goals_value in goals:
     ss = math.sin(psi)
     cs = math.cos(psi)
     print(sp,cp,st,ct,ss,cs)
-        
-    nx = round(cp * ct * cs - sp * ss,2)
-    ny = round(sp * ct * cs + cp * ss,2)
-    nz = round(- st * cs,2)
+    
+    nx = cp * ct * cs - sp * ss
+    ny = sp * ct * cs + cp * ss
+    nz = - st * cs
     print(nx,ny,nz)
-    ox = round(- cp * ct * ss - sp * cs,2)
-    oy = round(- sp * ct * ss + cp * cs,2)
-    oz = round(st * ss,2)
-    ax = round(cp * st,2)
-    ay = round(sp * st,2)
-    az = round(ct,2)
+    ox = - cp * ct * ss - sp * cs
+    oy = - sp * ct * ss + cp * cs
+    oz = st * ss
+    ax = cp * st
+    ay = sp * st
+    az = ct
+    
+    #nx = round(cp * ct * cs - sp * ss,5)
+    #ny = round(sp * ct * cs + cp * ss,5)
+    #nz = round(- st * cs,5)
+    #print(nx,ny,nz)
+    #ox = round(- cp * ct * ss - sp * cs,5)
+    #oy = round(- sp * ct * ss + cp * cs,5)
+    #oz = round(st * ss,5)
+    #ax = round(cp * st,5)
+    #ay = round(sp * st,5)
+    #az = round(ct,5)
         
     T_ee = [[nx, ox, ax, x],[ny, oy, ay, y],[nz, oz, az, z]]
       
     print(f"End effector pose: \n {T_ee}")
     
     #check if input goals is okay, the z axis of input must face forward!
-    if (ax >= 0.0) :
+    if (ax >= -0.1) :
         input_goals_ok = True
     else:
         input_goals_ok = False
