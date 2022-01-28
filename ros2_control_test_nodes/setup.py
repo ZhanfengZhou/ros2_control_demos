@@ -53,7 +53,11 @@ Demo nodes for showing and testing functionalities of the ros2_control framework
             "publisher_joint_trajectory_controller = \
                 ros2_control_test_nodes.publisher_joint_trajectory_controller:main",
             "publisher_inverse_kinematics_controller = \
-                ros2_control_test_nodes.publisher_inverse_kinematics_controller:main"    
+                ros2_control_test_nodes.publisher_inverse_kinematics_controller:main",
+            "publisher_end_effector_cartesian_move_controller = \
+                ros2_control_test_nodes.publisher_end_effector_cartesian_move_controller:main",
+            "publisher_grasp_original_pose_move = \
+                ros2_control_test_nodes.publisher_grasp_original_pose_move:main",
         ],
     },
 )

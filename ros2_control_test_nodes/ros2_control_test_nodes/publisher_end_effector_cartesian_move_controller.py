@@ -70,7 +70,7 @@ class PublisherJointTrajectory(Node):
 
         self.joint_state_msg_received = False
 
-        # Read all end effector euler angle and position from parameters
+        # Read original end effector euler angle and position from parameters
         self.goals = []
         for name in goal_names:
             self.declare_parameter(name)
@@ -83,11 +83,10 @@ class PublisherJointTrajectory(Node):
                 float_goal.append(float(value))
             self.goals.append(float_goal)
         
-        self.joints_goals = []
-        for goals_value in self.goals:
-            joints_goals_value = self.inverse_kinematics(goals_value)
-            self.joints_goals.append(joints_goals_value)
-        
+#        self.joints_goals = []
+#        for goals_value in self.goals:
+#            joints_goals_value = self.inverse_kinematics(goals_value)
+#            self.joints_goals.append(joints_goals_value)
         
         publish_topic = "/" + controller_name + "/" + "joint_trajectory"
 
@@ -199,19 +198,31 @@ class PublisherJointTrajectory(Node):
     def timer_callback(self):
 
         if self.starting_point_ok:
+        
+            if self.i<5:
+                self.goals[0][3] += 0.03      #meter
+            elif self.i >= 5 and self.i < 10:
+                self.goals[0][4] += 0.03
+            elif self.i >= 10 and self.i < 15:
+                self.goals[0][5] -= 0.03
+            
+            # use ik to get joint position
+            self.joints_goals = []
+            for goals_value in self.goals:
+                joints_goals_value = self.inverse_kinematics(goals_value)
+                self.joints_goals.append(joints_goals_value)
 
             traj = JointTrajectory()
             traj.joint_names = self.joints
             point = JointTrajectoryPoint()
             #point.positions = self.goals[self.i]
-            point.positions = self.joints_goals[self.i]  #the inverse kinematics results
-            point.time_from_start = Duration(sec=4)
+            point.positions = self.joints_goals[0]  #the inverse kinematics results
+            point.time_from_start = Duration(sec=1)
 
             traj.points.append(point)
             self.publisher_.publish(traj)
 
             self.i += 1
-            self.i %= len(self.joints_goals)
 
         elif self.check_starting_point and not self.joint_state_msg_received:
             self.get_logger().warn(
