@@ -23,6 +23,7 @@ import math
 import numpy as np
 import ikfastpy
 
+import pandas as pd
 
 class PublisherJointTrajectory(Node):
     def __init__(self):
@@ -100,6 +101,16 @@ class PublisherJointTrajectory(Node):
         self.timer = self.create_timer(wait_sec_between_publish, self.timer_callback)
         self.i = 0
         
+    def sensor_value_flag_read(self):
+        
+        data = pd.read_csv('/home/zhanfeng/ros2_ws/Sensor_data_process/flag.csv')
+        #flag = data['f'].to_numpy()
+        flag = data['f'].values.tolist()
+        flag = flag[-1]
+        
+        return flag
+        
+    
     def inverse_kinematics(self, goals_value):
         
         ur5_kinematics = ikfastpy.PyKinematics()
@@ -132,7 +143,7 @@ class PublisherJointTrajectory(Node):
         
         T_ee = [[nx, ox, ax, x],[ny, oy, ay, y],[nz, oz, az, z]]
         
-        self.get_logger().info(f"SoftHand grasp center pose: \n {T_ee}")
+        #self.get_logger().info(f"SoftHand grasp center pose: \n {T_ee}")
         
         #check if input goals is okay, the z axis of input must face forward!
         if (ax >= -0.1) :
@@ -150,6 +161,7 @@ class PublisherJointTrajectory(Node):
             #change from end effector Trans to the 6 joint Trans
             zcamera_6 = -0.175    #camera: z: 175mm
             ze_6 = -0.255    #grasp center: z: 255mm
+            
         
             T6_0 = [[nx, ox, ax, x+ax*ze_6],[ny, oy, ay, y+ay*ze_6],[nz, oz, az, z+az*ze_6]]
         
@@ -198,13 +210,61 @@ class PublisherJointTrajectory(Node):
     def timer_callback(self):
 
         if self.starting_point_ok:
+
+## test cartesian moving 
         
-            if self.i<5:
-                self.goals[0][3] += 0.03      #meter
-            elif self.i >= 5 and self.i < 10:
-                self.goals[0][4] += 0.03
-            elif self.i >= 10 and self.i < 15:
-                self.goals[0][5] -= 0.03
+#            if self.i<8:
+#                self.goals[0][3] += 0.02      #meter
+#            elif self.i >= 8 and self.i < 18:
+#                self.goals[0][4] += 0.02
+#            elif self.i >= 18 and self.i < 25:
+#                self.goals[0][5] -= 0.032
+
+## test cartesian limits          
+#            if self.i < 15:
+#                flag = 5
+#            else: 
+#                flag = 2
+
+            # read sensor value flag and set moving direction and goals
+            flag = self.sensor_value_flag_read()
+
+            
+            if flag == 0:
+                self.get_logger().info('no command')
+            elif flag == 1:   #left
+                self.goals[0][4] += 0.01
+                self.get_logger().info('moving left to y = {} cm'.format(self.goals[0][4] * 100))
+            elif flag == 2:    #right
+                self.goals[0][4] -= 0.01
+                self.get_logger().info('moving right to y = {} cm'.format(self.goals[0][4] * 100))
+            elif flag == 3:    #forward
+                self.goals[0][3] += 0.01
+                self.get_logger().info('moving forward to x = {} cm'.format(self.goals[0][3] * 100))
+            elif flag == 4:    #backward
+                self.goals[0][3] -= 0.01
+                self.get_logger().info('moving backward to x = {} cm'.format(self.goals[0][3] * 100))
+            elif flag == 5:    #down
+                self.goals[0][5] -= 0.01
+                #self.goals[0][5] += 0.01    # moving up
+                self.get_logger().info('moving down to z = {} cm'.format(self.goals[0][5] * 100))
+                
+            # check if the end effector goal exceed limits
+            if self.goals[0][4] >= 0.25:
+                self.goals[0][4] = 0.25
+            elif  self.goals[0][4] <= -0.25:
+                self.goals[0][4] = -0.25
+            
+            if self.goals[0][3] >= 0.4:
+                self.goals[0][3] = 0.4
+            elif  self.goals[0][3] <= 0.10:
+                self.goals[0][3] = 0.10
+                
+            if self.goals[0][5] >= 0.3:
+                self.goals[0][5] = 0.3
+            elif  self.goals[0][5] <= 0.10:
+                self.goals[0][5] = 0.10
+                
             
             # use ik to get joint position
             self.joints_goals = []
