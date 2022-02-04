@@ -161,9 +161,10 @@ class PublisherJointTrajectory(Node):
             #change from end effector Trans to the 6 joint Trans
             zcamera_6 = -0.175    #camera: z: 175mm
             ze_6 = -0.255    #grasp center: z: 255mm
+            z_sensorhand_6 = -0.238   
             
         
-            T6_0 = [[nx, ox, ax, x+ax*ze_6],[ny, oy, ay, y+ay*ze_6],[nz, oz, az, z+az*ze_6]]
+            T6_0 = [[nx, ox, ax, x+ax*z_sensorhand_6],[ny, oy, ay, y+ay*z_sensorhand_6],[nz, oz, az, z+az*z_sensorhand_6]]
         
             self.Trans = np.array(T6_0)
         
@@ -180,10 +181,10 @@ class PublisherJointTrajectory(Node):
             # First, the joints solution should satisfy joint limits!
             joints_limits = {}
             joints_limits['shoulder_pan_joint'] = [math.radians(r) for r in [float(angle) for angle in [-90, 90+1]] ] 
-            joints_limits['shoulder_lift_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, -30]] ] 
+            joints_limits['shoulder_lift_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, -10]] ] 
             joints_limits['elbow_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150,150+1]] ] 
-            joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-300, 100]] ] 
-            joints_limits['wrist_2_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, 80+1]] ] 
+            joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-200, 10]] ] 
+            joints_limits['wrist_2_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, 145+1]] ] 
             joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-181, 180]] ] 
             
             valid_sols = []
@@ -222,9 +223,9 @@ class PublisherJointTrajectory(Node):
 
 ## test cartesian limits          
 #            if self.i < 15:
-#                flag = 5
+#                flag = 3
 #            else: 
-#                flag = 2
+#                flag = 1
 
             # read sensor value flag and set moving direction and goals
             flag = self.sensor_value_flag_read()
@@ -255,15 +256,15 @@ class PublisherJointTrajectory(Node):
             elif  self.goals[0][4] <= -0.25:
                 self.goals[0][4] = -0.25
             
-            if self.goals[0][3] >= 0.4:
-                self.goals[0][3] = 0.4
+            if self.goals[0][3] >= 0.45:
+                self.goals[0][3] = 0.45
             elif  self.goals[0][3] <= 0.10:
                 self.goals[0][3] = 0.10
                 
-            if self.goals[0][5] >= 0.3:
-                self.goals[0][5] = 0.3
-            elif  self.goals[0][5] <= 0.10:
-                self.goals[0][5] = 0.10
+            if self.goals[0][5] >= 0.31:
+                self.goals[0][5] = 0.31
+            elif  self.goals[0][5] <= -0.06:
+                self.goals[0][5] = -0.06
                 
             
             # use ik to get joint position

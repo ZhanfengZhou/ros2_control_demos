@@ -27,7 +27,7 @@ for goals_value in goals:
     #phi = round(math.radians(goals_value[0]),5)
     #theta = round(math.radians(goals_value[1]),5)
     #psi = round(math.radians(goals_value[2]),5)
-    print(phi,theta,psi)
+    #print(phi,theta,psi)
     x = goals_value[3]
     y = goals_value[4]
     z = goals_value[5]
@@ -38,12 +38,12 @@ for goals_value in goals:
     ct = math.cos(theta)
     ss = math.sin(psi)
     cs = math.cos(psi)
-    print(sp,cp,st,ct,ss,cs)
+    #print(sp,cp,st,ct,ss,cs)
     
     nx = cp * ct * cs - sp * ss
     ny = sp * ct * cs + cp * ss
     nz = - st * cs
-    print(nx,ny,nz)
+    #print(nx,ny,nz)
     ox = - cp * ct * ss - sp * cs
     oy = - sp * ct * ss + cp * cs
     oz = st * ss
@@ -64,7 +64,7 @@ for goals_value in goals:
         
     T_ee = [[nx, ox, ax, x],[ny, oy, ay, y],[nz, oz, az, z]]
       
-    print(f"End effector pose: \n {T_ee}")
+    #print(f"End effector pose: \n {T_ee}")
     
     #check if input goals is okay, the z axis of input must face forward!
     if (ax >= -0.1) :
@@ -82,7 +82,7 @@ for goals_value in goals:
     zcamera_6 = -0.255    #grasp center: z: 255mm
         
     T6_0 = [[nx, ox, ax, x+ax*ze_6],[ny, oy, ay, y+ay*ze_6],[nz, oz, az, z+az*ze_6]]
-    print(f"T6_0 pose: \n {T6_0}")
+    #print(f"T6_0 pose: \n {T6_0}")
         
     Trans = np.array(T6_0)
     print(f"Trans: \n {Trans}")
@@ -99,10 +99,10 @@ for goals_value in goals:
 
     joints_limits = {}
     joints_limits['shoulder_pan_joint'] = [math.radians(r) for r in [float(angle) for angle in [-90, 90+1]] ] 
-    joints_limits['shoulder_lift_joint'] =[math.radians(r) for r in [float(angle) for angle in [-150, -30]] ] 
+    joints_limits['shoulder_lift_joint'] =[math.radians(r) for r in [float(angle) for angle in [-150, -10]] ] 
     joints_limits['elbow_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150,150+1]] ] 
-    joints_limits['wrist_1_joint'] =[math.radians(r) for r in [float(angle) for angle in [-300, 100]] ] 
-    joints_limits['wrist_2_joint'] =[math.radians(r) for r in [float(angle) for angle in [-150, 80+1]] ] 
+    joints_limits['wrist_1_joint'] =[math.radians(r) for r in [float(angle) for angle in [-200, 10]] ] 
+    joints_limits['wrist_2_joint'] =[math.radians(r) for r in [float(angle) for angle in [-150, 145+1]] ] 
     joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-181, 180]] ] 
     print(f'joints limits: {joints_limits}')
     

@@ -169,10 +169,10 @@ class PublisherJointTrajectory(Node):
             # First, the joints solution should satisfy joint limits!
             joints_limits = {}
             joints_limits['shoulder_pan_joint'] = [math.radians(r) for r in [float(angle) for angle in [-90, 90+1]] ] 
-            joints_limits['shoulder_lift_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, -30]] ] 
+            joints_limits['shoulder_lift_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, -10]] ]  # !!!!!!change -30 to -10
             joints_limits['elbow_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150,150+1]] ] 
-            joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-300, 100]] ] 
-            joints_limits['wrist_2_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, 80+1]] ] 
+            joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-300, 10]] ]     # !!!!!!change 100 to 10
+            joints_limits['wrist_2_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, 145+1]] ]     # !!!!!!change 80 to 145
             joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-181, 180]] ] 
             
             valid_sols = []
