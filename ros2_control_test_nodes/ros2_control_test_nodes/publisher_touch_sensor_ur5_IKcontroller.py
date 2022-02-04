@@ -142,9 +142,9 @@ class PublisherJointTrajectory(Node):
             input_goals_ok = False
             raise Exception('The input goals is incorrect. Facing backward!')
             
-#        if ((az <= 0.0) and (z < 0)) or ((az > 0.5) and (z < 0.35)) :
-#            input_goals_ok = False
-#            raise Exception('The soft hand grasp position is too low!')
+        if ((az <= 0.0) and (z < 0)) or ((az > 0.5) and (z < 0.35)) :
+            input_goals_ok = False
+            raise Exception('The soft hand grasp position is too low!')
         
         if input_goals_ok :
         
@@ -171,7 +171,7 @@ class PublisherJointTrajectory(Node):
             joints_limits['shoulder_pan_joint'] = [math.radians(r) for r in [float(angle) for angle in [-90, 90+1]] ] 
             joints_limits['shoulder_lift_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, -10]] ]  # !!!!!!change -30 to -10
             joints_limits['elbow_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150,150+1]] ] 
-            joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-300, 10]] ]     # !!!!!!change 100 to 10
+            joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-200, 10]] ]     # !!!!!!change 100 to 10
             joints_limits['wrist_2_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, 145+1]] ]     # !!!!!!change 80 to 145
             joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-181, 180]] ] 
             

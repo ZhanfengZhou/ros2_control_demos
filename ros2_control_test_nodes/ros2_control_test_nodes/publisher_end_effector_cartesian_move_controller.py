@@ -152,9 +152,9 @@ class PublisherJointTrajectory(Node):
             input_goals_ok = False
             raise Exception('The input goals is incorrect. Facing backward!')
             
-        if ((az <= 0.0) and (z < 0)) or ((az > 0.5) and (z < 0.35)) :
-            input_goals_ok = False
-            raise Exception('The soft hand grasp position is too low!')
+#        if ((az <= 0.0) and (z < 0)) or ((az > 0.5) and (z < 0.35)) :
+#            input_goals_ok = False
+#            raise Exception('The soft hand grasp position is too low!')
         
         if input_goals_ok :
         
@@ -234,19 +234,19 @@ class PublisherJointTrajectory(Node):
             if flag == 0:
                 self.get_logger().info('no command')
             elif flag == 1:   #left
-                self.goals[0][4] += 0.01
+                self.goals[0][4] += 0.10
                 self.get_logger().info('moving left to y = {} cm'.format(self.goals[0][4] * 100))
             elif flag == 2:    #right
-                self.goals[0][4] -= 0.01
+                self.goals[0][4] -= 0.10
                 self.get_logger().info('moving right to y = {} cm'.format(self.goals[0][4] * 100))
             elif flag == 3:    #forward
-                self.goals[0][3] += 0.01
+                self.goals[0][3] += 0.10
                 self.get_logger().info('moving forward to x = {} cm'.format(self.goals[0][3] * 100))
             elif flag == 4:    #backward
-                self.goals[0][3] -= 0.01
+                self.goals[0][3] -= 0.08
                 self.get_logger().info('moving backward to x = {} cm'.format(self.goals[0][3] * 100))
             elif flag == 5:    #down
-                self.goals[0][5] -= 0.01
+                self.goals[0][5] -= 0.18
                 #self.goals[0][5] += 0.01    # moving up
                 self.get_logger().info('moving down to z = {} cm'.format(self.goals[0][5] * 100))
                 
