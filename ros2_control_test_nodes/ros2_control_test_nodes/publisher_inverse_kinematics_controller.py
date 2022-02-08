@@ -133,7 +133,7 @@ class PublisherJointTrajectory(Node):
         
         T_ee = [[nx, ox, ax, x],[ny, oy, ay, y],[nz, oz, az, z]]
         
-        self.get_logger().info(f"SoftHand grasp center pose: \n {T_ee}")
+        #self.get_logger().info(f"SoftHand grasp center pose: \n {T_ee}")
         
         #check if input goals is okay, the z axis of input must face forward!
         if (ax >= -0.1) :
