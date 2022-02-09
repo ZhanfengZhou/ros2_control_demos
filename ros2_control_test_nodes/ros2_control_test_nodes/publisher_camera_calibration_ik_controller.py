@@ -30,6 +30,7 @@ class PublisherJointTrajectory(Node):
         # Declare all parameters
         self.declare_parameter("controller_name", "position_trajectory_controller")
         self.declare_parameter("wait_sec_between_publish", 6)
+        self.declare_parameter("trajectory_duration", 4)
         self.declare_parameter("goal_names", ["pos1", "pos2"])
         self.declare_parameter("joints")
         self.declare_parameter("check_starting_point", False)
@@ -38,6 +39,7 @@ class PublisherJointTrajectory(Node):
         # Read parameters
         controller_name = self.get_parameter("controller_name").value
         wait_sec_between_publish = self.get_parameter("wait_sec_between_publish").value
+        self.trajectory_duration = self.get_parameter("trajectory_duration").value
         goal_names = self.get_parameter("goal_names").value
         self.joints = self.get_parameter("joints").value
         self.check_starting_point = self.get_parameter("check_starting_point").value
@@ -85,6 +87,7 @@ class PublisherJointTrajectory(Node):
         
         self.joints_goals = []
         for goals_value in self.goals:
+            self.get_logger().info('Calculating inverse kinematics to get joint value')
             joints_goals_value = self.inverse_kinematics(goals_value)
             self.joints_goals.append(joints_goals_value)
         
@@ -103,6 +106,7 @@ class PublisherJointTrajectory(Node):
         
     def inverse_kinematics(self, goals_value):
         
+        self.get_logger().info('Calculate inverse kinematics for goal value: {}'.format(goals_value))
         ur5_kinematics = ikfastpy.PyKinematics()
         n_joints = ur5_kinematics.getDOF()
         
@@ -136,12 +140,13 @@ class PublisherJointTrajectory(Node):
         #self.get_logger().info(f"SoftHand grasp center pose: \n {T_ee}")
         
         #check if input goals is okay, the z axis of input must face forward!
-        if (ax >= -0.1) :
-            input_goals_ok = True
-        else:
-            input_goals_ok = False
-            raise Exception('The input goals is incorrect. Facing backward!')
-            
+#        if (ax >= -0.1) :
+#            input_goals_ok = True
+#        else:
+#            input_goals_ok = False
+#            raise Exception('The input goals is incorrect. Facing backward!')
+        input_goals_ok = True
+        
         if ((az <= 0.0) and (z < 0)) or ((az > 0.5) and (z < 0.35)):
             input_goals_ok = False
             raise Exception('The soft hand grasp position is too low!')
@@ -152,7 +157,7 @@ class PublisherJointTrajectory(Node):
             zcamera_6 = -0.175    #camera: z: 175mm
             ze_6 = -0.255    #grasp center: z: 255mm
         
-            T6_0 = [[nx, ox, ax, x+ax*ze_6],[ny, oy, ay, y+ay*ze_6],[nz, oz, az, z+az*ze_6]]
+            T6_0 = [[nx, ox, ax, x+ax*zcamera_6],[ny, oy, ay, y+ay*zcamera_6],[nz, oz, az, z+az*zcamera_6]]
         
             self.Trans = np.array(T6_0)
         
@@ -183,6 +188,8 @@ class PublisherJointTrajectory(Node):
                         test_ang = sol[i] + add_ang
                         if (abs(test_ang) <= 2. * np.pi and abs(test_ang - desired_joints_configs[i] ) < abs(test_sol[i] - desired_joints_configs[i]) and test_ang > joints_limits[self.joints[i]][0] and test_ang < joints_limits[self.joints[i]][1] ):
                             test_sol[i] = test_ang
+                self.get_logger().info('test solution: {}'.format(test_sol))
+                
                 if np.all(test_sol != 9999.):
                     valid_sols.append(test_sol)  # the element in the list is of array type.
             
@@ -205,10 +212,11 @@ class PublisherJointTrajectory(Node):
             point = JointTrajectoryPoint()
             #point.positions = self.goals[self.i]
             point.positions = self.joints_goals[self.i]  #the inverse kinematics results
-            point.time_from_start = Duration(sec=4)
+            point.time_from_start = Duration(sec=self.trajectory_duration)
 
             traj.points.append(point)
             self.publisher_.publish(traj)
+            self.get_logger().info('Publishing traj for point_{}'.format(self.i))
 
             self.i += 1
             self.i %= len(self.joints_goals)

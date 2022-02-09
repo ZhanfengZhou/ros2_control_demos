@@ -60,6 +60,8 @@ Demo nodes for showing and testing functionalities of the ros2_control framework
                 ros2_control_test_nodes.publisher_grasp_original_pose_move:main",
             "publisher_touch_sensor_ur5_IKcontroller = \
                 ros2_control_test_nodes.publisher_touch_sensor_ur5_IKcontroller:main",
+            "publisher_camera_calibration_ik_controller = \
+                ros2_control_test_nodes.publisher_camera_calibration_ik_controller:main",
         ],
     },
 )
