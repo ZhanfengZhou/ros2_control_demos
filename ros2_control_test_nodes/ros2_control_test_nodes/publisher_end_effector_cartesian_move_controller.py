@@ -246,7 +246,7 @@ class PublisherJointTrajectory(Node):
                 self.goals[0][3] -= 0.08
                 self.get_logger().info('moving backward to x = {} cm'.format(self.goals[0][3] * 100))
             elif flag == 5:    #down
-                self.goals[0][5] -= 0.18
+                self.goals[0][5] -= 0.14
                 #self.goals[0][5] += 0.01    # moving up
                 self.get_logger().info('moving down to z = {} cm'.format(self.goals[0][5] * 100))
                 
@@ -256,8 +256,8 @@ class PublisherJointTrajectory(Node):
             elif  self.goals[0][4] <= -0.25:
                 self.goals[0][4] = -0.25
             
-            if self.goals[0][3] >= 0.45:
-                self.goals[0][3] = 0.45
+            if self.goals[0][3] >= 0.8:
+                self.goals[0][3] = 0.8
             elif  self.goals[0][3] <= 0.10:
                 self.goals[0][3] = 0.10
                 
