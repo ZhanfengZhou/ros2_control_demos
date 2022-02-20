@@ -168,7 +168,7 @@ class PublisherJointTrajectory(Node):
         
             # find the best joints_goals solution
             # the best solution is chosen to be closest to desired grasp position
-            desired_joints_configs = [float(angle) for angle in [0, -90, -60, -120, 90, 0]]
+            desired_joints_configs = [float(angle) for angle in [0, -90, -60, -120, 90, 180]]
             desired_joints_configs = [math.radians(angle) for angle in desired_joints_configs]
         
             # First, the joints solution should satisfy joint limits!
@@ -178,7 +178,7 @@ class PublisherJointTrajectory(Node):
             joints_limits['elbow_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150,15+1]] ] 
             joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-250, 10]] ]     # !!!!!!change 100 to 10
             joints_limits['wrist_2_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, 145+1]] ]     # !!!!!!change 80 to 145
-            joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-181, 180]] ] 
+            joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-1, 225]] ] 
             
             valid_sols = []
             for sol in joints_configs:
