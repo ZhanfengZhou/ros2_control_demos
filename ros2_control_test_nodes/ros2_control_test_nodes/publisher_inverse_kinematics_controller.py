@@ -29,7 +29,8 @@ class PublisherJointTrajectory(Node):
         super().__init__("publisher_position_trajectory_controller")
         # Declare all parameters
         self.declare_parameter("controller_name", "position_trajectory_controller")
-        self.declare_parameter("wait_sec_between_publish", 6)
+        self.declare_parameter("wait_sec_between_publish", 8)
+        self.declare_parameter("moving_duration_time", 6)
         self.declare_parameter("goal_names", ["pos1", "pos2"])
         self.declare_parameter("joints")
         self.declare_parameter("check_starting_point", False)
@@ -38,6 +39,7 @@ class PublisherJointTrajectory(Node):
         # Read parameters
         controller_name = self.get_parameter("controller_name").value
         wait_sec_between_publish = self.get_parameter("wait_sec_between_publish").value
+        self.moving_duration_time = self.get_parameter("moving_duration_time").value
         goal_names = self.get_parameter("goal_names").value
         self.joints = self.get_parameter("joints").value
         self.check_starting_point = self.get_parameter("check_starting_point").value
@@ -102,7 +104,8 @@ class PublisherJointTrajectory(Node):
         self.i = 0
         
     def inverse_kinematics(self, goals_value):
-        
+    
+        self.get_logger().info('Calculate inverse kinematics for goal value: {}'.format(goals_value))
         ur5_kinematics = ikfastpy.PyKinematics()
         n_joints = ur5_kinematics.getDOF()
         
@@ -152,7 +155,7 @@ class PublisherJointTrajectory(Node):
             zcamera_6 = -0.175    #camera: z: 175mm
             ze_6 = -0.255    #grasp center: z: 255mm
         
-            T6_0 = [[nx, ox, ax, x+ax*ze_6],[ny, oy, ay, y+ay*ze_6],[nz, oz, az, z+az*ze_6]]
+            T6_0 = [[nx, ox, ax, x+ax*zcamera_6],[ny, oy, ay, y+ay*zcamera_6],[nz, oz, az, z+az*zcamera_6]]
         
             self.Trans = np.array(T6_0)
         
@@ -163,17 +166,18 @@ class PublisherJointTrajectory(Node):
         
             # find the best joints_goals solution
             # the best solution is chosen to be closest to desired grasp position
-            desired_joints_configs = [float(angle) for angle in [0, -90, -60, -120, 90, 0]]
+            desired_joints_configs = [float(angle) for angle in [0, -90, -60, -100, 90, 180]]
             desired_joints_configs = [math.radians(angle) for angle in desired_joints_configs]
         
             # First, the joints solution should satisfy joint limits!
             joints_limits = {}
             joints_limits['shoulder_pan_joint'] = [math.radians(r) for r in [float(angle) for angle in [-90, 90+1]] ] 
             joints_limits['shoulder_lift_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, -10]] ]  # !!!!!!change -30 to -10
-            joints_limits['elbow_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150,150+1]] ] 
-            joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-300, 10]] ]     # !!!!!!change 100 to 10
-            joints_limits['wrist_2_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, 145+1]] ]     # !!!!!!change 80 to 145
-            joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-181, 180]] ] 
+            joints_limits['elbow_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150,15+1]] ] 
+            joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-230, 10]] ]     # lateral grasp
+            #joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-130, 80]] ]     # vertical grasp
+            joints_limits['wrist_2_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, 170+1]] ]     # !!!!!!change 80 to 145
+            joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-1, 225]] ] 
             
             valid_sols = []
             for sol in joints_configs:
@@ -205,7 +209,7 @@ class PublisherJointTrajectory(Node):
             point = JointTrajectoryPoint()
             #point.positions = self.goals[self.i]
             point.positions = self.joints_goals[self.i]  #the inverse kinematics results
-            point.time_from_start = Duration(sec=4)
+            point.time_from_start = Duration(sec=self.moving_duration_time)
 
             traj.points.append(point)
             self.publisher_.publish(traj)

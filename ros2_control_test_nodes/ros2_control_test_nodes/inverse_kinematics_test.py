@@ -11,7 +11,7 @@ from sensor_msgs.msg import JointState
 # Read all end effector euler angle and position from parameters
 #goals = [[-90.0, 90.0, 90.0, 0.6, -0.109, 0.3],[-90.0, 90.0, 90.0, 0.4, -0.109, 0.6],[-90.0, 90.0, 90.0, 0.4, -0.3, 0.6],[-90.0, 90.0, 90.0, 0.4, -0.3, 0.3]]
 #goals = [[-89.9, -179.9, 89.9, 0.4, -0.109, 0.3],]   #okay....should be have 0.1 degree input error to make the ikfastpy code working!!!!!! 
-goals = [[-45.0, 150.0, 0.0, 0.18, 0.07, 0.32]]
+goals = [[-90.0, 90.0, 90.0, 0.3, -0.3, 0.25]]
 
 
 
@@ -96,16 +96,17 @@ for goals_value in goals:
     print(f"Joints config: \n {joints_configs/3.14159*180}")
        
     # find the best joints_goals solution
-    desired_joints_configs = [float(angle) for angle in [0, -90, -60, -120, 90, 0]]
+    desired_joints_configs = [float(angle) for angle in [0, -90, -60, -100, 90, 0]]
     desired_joints_configs = [math.radians(angle) for angle in desired_joints_configs]
 
     joints_limits = {}
     joints_limits['shoulder_pan_joint'] = [math.radians(r) for r in [float(angle) for angle in [-90, 90+1]] ] 
-    joints_limits['shoulder_lift_joint'] =[math.radians(r) for r in [float(angle) for angle in [-150, -10]] ] 
-    joints_limits['elbow_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150,150+1]] ] 
-    joints_limits['wrist_1_joint'] =[math.radians(r) for r in [float(angle) for angle in [-300, 10]] ] 
-    joints_limits['wrist_2_joint'] =[math.radians(r) for r in [float(angle) for angle in [-150, 145+1]] ] 
-    joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-181, 180]] ] 
+    joints_limits['shoulder_lift_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, -10]] ]  # !!!!!!change -30 to -10
+    joints_limits['elbow_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150,15+1]] ] 
+    joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-230, 10]] ]     # lateral grasp
+    #joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-130, 130]] ]     # vertical grasp
+    joints_limits['wrist_2_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, 145+1]] ]     # !!!!!!change 80 to 145
+    joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-180, 225]] ] 
     print(f'joints limits: {joints_limits}')
     
     joints = ['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint', 'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
