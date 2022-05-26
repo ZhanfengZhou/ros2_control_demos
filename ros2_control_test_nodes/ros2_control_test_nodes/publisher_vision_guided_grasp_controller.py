@@ -22,6 +22,7 @@ from sensor_msgs.msg import JointState
 import math
 import numpy as np
 import ikfastpy
+import time
 
 
 class PublisherJointTrajectory(Node):
@@ -32,7 +33,10 @@ class PublisherJointTrajectory(Node):
         self.declare_parameter("wait_sec_between_publish", 8)
         self.declare_parameter("moving_duration_time", 6)
         self.declare_parameter("goal_names", ["pos1", "pos2"])
+        self.declare_parameter("final_goal1")
+        self.declare_parameter("final_goal2")
         self.declare_parameter("joints")
+        self.declare_parameter("objects_num", 1)
         self.declare_parameter("check_starting_point", False)
         self.declare_parameter("starting_point_limits")
 
@@ -41,9 +45,43 @@ class PublisherJointTrajectory(Node):
         wait_sec_between_publish = self.get_parameter("wait_sec_between_publish").value
         self.moving_duration_time = self.get_parameter("moving_duration_time").value
         goal_names = self.get_parameter("goal_names").value
+        objects_num = self.get_parameter("objects_num").value
+        self.final_goal1 = self.get_parameter("final_goal1").value
+        self.final_goal2 = self.get_parameter("final_goal2").value
+        self.final_pos1 = self.final_goal1[3:6]
+        self.final_pos2 = self.final_goal2[3:6]
         self.joints = self.get_parameter("joints").value
         self.check_starting_point = self.get_parameter("check_starting_point").value
         self.starting_point = {}  #a dictionary
+        
+        # Read the object transformation matrix and center point from Runze code (copy it from .npy)
+        self.objects_trans_all = []
+        self.objects_center_point_all = []
+        
+        for i in range(objects_num):
+            
+            object_trans_filename = f'/home/zhanfeng/camera_ws/src/Realsense_python/camera_calibration/Vision_based_grasping_data/bounding_box_transform_matrix_{i}.npy'
+            object_trans = np.load(object_trans_filename)
+        
+            if object_trans[2,1] < 0:
+                object_trans[2] = object_trans[2] * (-1)
+                object_trans[0] = object_trans[0] * (-1)
+            object_trans = object_trans.transpose()
+            
+            self.objects_trans_all.append(object_trans)
+        
+            object_contour_point_filename = f'/home/zhanfeng/camera_ws/src/Realsense_python/camera_calibration/Vision_based_grasping_data/bounding_box_8pts_{i}.npy'
+            object_contour_point = np.load(object_contour_point_filename)
+        
+            object_point_sum = np.array([0, 0, 0])
+            for i in range(8):
+                object_point_sum = object_point_sum + object_contour_point[i]
+            object_center_point = object_point_sum / 8
+            object_center_point[0] = object_center_point[0] - 0.01
+            object_center_point[1] = object_center_point[1] - 0.05
+            
+            self.objects_center_point_all.append(object_center_point)
+        
 
         if self.joints is None or len(self.joints) == 0:
             raise Exception('"joints" parameter is not set!')
@@ -72,40 +110,49 @@ class PublisherJointTrajectory(Node):
 
         self.joint_state_msg_received = False
 
-        # Read all end effector euler angle and position from parameters
+        #Read all end effector euler angle and position from parameters
         self.goals = []
         for name in goal_names:
             self.declare_parameter(name)
             goal = self.get_parameter(name).value
             if goal is None or len(goal) == 0:
                 raise Exception(f'Values for goal "{name}" not set!')
-
             float_goal = []
             for value in goal:
                 float_goal.append(float(value))
             self.goals.append(float_goal)
         
+        self.get_logger().info('center point x1: {} '.format(self.objects_center_point_all[1]))
+        
         self.joints_goals = []
-        for goals_value in self.goals:
-            joints_goals_value = self.inverse_kinematics(goals_value)
+        for i in range(objects_num):
+            joints_goals_value = self.inverse_kinematics_cylinder(self.goals[i], self.objects_trans_all[i], self.objects_center_point_all[i])
             self.joints_goals.append(joints_goals_value)
+            final_joints_goals_value1 = self.inverse_kinematics_cylinder(self.final_goal1, self.objects_trans_all[i], self.final_pos1)
+            self.joints_goals.append(final_joints_goals_value1)
+            final_joints_goals_value2 = self.inverse_kinematics_cylinder(self.final_goal2, self.objects_trans_all[i], self.final_pos2)
+            self.joints_goals.append(final_joints_goals_value2)
+            self.joints_goals.append(final_joints_goals_value1)
         
         
         publish_topic = "/" + controller_name + "/" + "joint_trajectory"
 
         self.get_logger().info(
             'Publishing {} joints goals on topic "{}" every {} s'.format(
-                len(goal_names), publish_topic, wait_sec_between_publish
+                objects_num, publish_topic, wait_sec_between_publish
             )
         )
 
         self.publisher_ = self.create_publisher(JointTrajectory, publish_topic, 1)
+        time.sleep(2)
         self.timer = self.create_timer(wait_sec_between_publish, self.timer_callback)
         self.i = 0
         
-    def inverse_kinematics(self, goals_value):
+        
+        
+    def inverse_kinematics_cylinder(self, goals_value, object_trans, object_center_point):
     
-        self.get_logger().info('Calculate inverse kinematics for goal value: {}'.format(goals_value))
+        self.get_logger().info('Calculate inverse kinematics for goal value: {}'.format(object_center_point))
         ur5_kinematics = ikfastpy.PyKinematics()
         n_joints = ur5_kinematics.getDOF()
         
@@ -113,9 +160,9 @@ class PublisherJointTrajectory(Node):
         phi = math.radians(goals_value[0])
         theta = math.radians(goals_value[1])
         psi = math.radians(goals_value[2])
-        x = goals_value[3]
-        y = goals_value[4]
-        z = goals_value[5]
+        x = object_center_point[0]
+        y = object_center_point[1]
+        z = object_center_point[2]
         
         sp = math.sin(phi)
         cp = math.cos(phi)
@@ -134,28 +181,36 @@ class PublisherJointTrajectory(Node):
         ay = sp * st
         az = ct
         
+        nx_r = object_trans[0,2]
+        ny_r = object_trans[1,2]
+        nz_r = object_trans[2,2]
+        ox_r = object_trans[0,0]
+        oy_r = object_trans[1,0]
+        oz_r = object_trans[2,0]
+        ax_r = object_trans[0,1]
+        ay_r = object_trans[1,1]
+        az_r = object_trans[2,1]
+        
         T_ee = [[nx, ox, ax, x],[ny, oy, ay, y],[nz, oz, az, z]]
         
         #self.get_logger().info(f"SoftHand grasp center pose: \n {T_ee}")
         
         #check if input goals is okay, the z axis of input must face forward!
-        if (ax >= -0.1) :
+        if (az <= 0.1) :
             input_goals_ok = True
         else:
             input_goals_ok = False
-            raise Exception('The input goals is incorrect. Facing backward!')
+            raise Exception('The input goals is incorrect. Facing upward!')
             
-        if ((az <= 0.0) and (z < -0.05)) or ((az > 0.5) and (z < 0.35)):
+        if (z < -0.08):
             input_goals_ok = False
             raise Exception('The soft hand grasp position is too low!')
         
         if input_goals_ok :
         
             #change from end effector Trans to the 6 joint Trans
-            zcamera_6 = -0.175    #camera: z: 175mm
             ze_6 = -0.255    #grasp center: z: 255mm
-        
-            T6_0 = [[nx, ox, ax, x+ax*zcamera_6],[ny, oy, ay, y+ay*zcamera_6],[nz, oz, az, z+az*zcamera_6]]
+            T6_0 = [[nx, ox, ax, x+ax*ze_6],[ny, oy, ay, y+ay*ze_6],[nz, oz, az, z+az*ze_6]]
         
             self.Trans = np.array(T6_0)
         
@@ -207,7 +262,6 @@ class PublisherJointTrajectory(Node):
             traj = JointTrajectory()
             traj.joint_names = self.joints
             point = JointTrajectoryPoint()
-            #point.positions = self.goals[self.i]
             point.positions = self.joints_goals[self.i]  #the inverse kinematics results
             point.time_from_start = Duration(sec=self.moving_duration_time)
 
