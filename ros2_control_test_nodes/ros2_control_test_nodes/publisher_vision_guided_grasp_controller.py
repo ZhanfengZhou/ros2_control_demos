@@ -59,9 +59,14 @@ class PublisherJointTrajectory(Node):
         self.objects_center_point_all = []
         
         for i in range(objects_num):
+           
             
-            object_trans_filename = f'/home/zhanfeng/camera_ws/src/Realsense_python/camera_calibration/Vision_based_grasping_data/bounding_box_transform_matrix_{i}.npy'
-            object_trans = np.load(object_trans_filename)
+            object_matrix_filename = f'/home/zhanfeng/camera_ws/src/Realsense_python/camera_calibration/Vision_based_grasping_data/bounding_box_transform_matrix_{i}.npy'
+            #object_matrix = np.load(object_matrix_filename)   # 3*4 input
+            #object_trans = object_matrix[0:3, 0:3]
+            #object_center_point = object_matrix[0:3, 3]
+            
+            object_trans = np.load(object_matrix_filename)  # 3*3 input
         
             if object_trans[2,1] < 0:
                 object_trans[2] = object_trans[2] * (-1)
@@ -77,8 +82,13 @@ class PublisherJointTrajectory(Node):
             for i in range(8):
                 object_point_sum = object_point_sum + object_contour_point[i]
             object_center_point = object_point_sum / 8
-            object_center_point[0] = object_center_point[0] - 0.01
+            
+            object_center_point = np.array([0.4, -0.15, 0.0082])
+            
+            object_center_point[0] = object_center_point[0] - 0.015
             object_center_point[1] = object_center_point[1] - 0.05
+            
+            
             
             self.objects_center_point_all.append(object_center_point)
         
