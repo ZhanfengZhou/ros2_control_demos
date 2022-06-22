@@ -63,7 +63,9 @@ Demo nodes for showing and testing functionalities of the ros2_control framework
             "publisher_camera_calibration_ik_controller = \
                 ros2_control_test_nodes.publisher_camera_calibration_ik_controller:main",
             "publisher_vision_guided_grasp_controller = \
-                ros2_control_test_nodes.publisher_vision_guided_grasp_controller:main",
+                ros2_control_test_nodes.publisher_vision_guided_grasp_test_controller:main",
+            "publisher_vision_based_grasp_controller = \
+                ros2_control_test_nodes.publisher_vision_based_grasp_preset_controller:main",
         ],
     },
 )
