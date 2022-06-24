@@ -1,4 +1,4 @@
-# Read euler angle and center point from the .npy file and control the robotic arm.
+# Use paramters in yaml file to control the robotic arm.
 
 import rclpy
 from rclpy.node import Node
@@ -17,9 +17,12 @@ class PublisherJointTrajectory(Node):
         super().__init__("publisher_position_trajectory_controller")
         # Declare all parameters
         self.declare_parameter("controller_name", "position_trajectory_controller")
-        self.declare_parameter("wait_sec_between_publish", 6)
-        self.declare_parameter("trajectory_duration", 4)
+        self.declare_parameter("wait_sec_between_publish", 8)
+        self.declare_parameter("trajectory_duration", 6)
         self.declare_parameter("goal_names", ["object0", "object1"])
+        self.declare_parameter("start_goal")
+        self.declare_parameter("intermediate_goal")
+        self.declare_parameter("final_goal")
         self.declare_parameter("joints")
         self.declare_parameter("check_starting_point", False)
         self.declare_parameter("starting_point_limits")
@@ -30,6 +33,9 @@ class PublisherJointTrajectory(Node):
         self.trajectory_duration = self.get_parameter("trajectory_duration").value
         goal_names = self.get_parameter("goal_names").value
         self.joints = self.get_parameter("joints").value
+        self.start_goal = self.get_parameter("start_goal").value
+        self.intermediate_goal = self.get_parameter("intermediate_goal").value
+        self.final_goal = self.get_parameter("final_goal").value
         self.check_starting_point = self.get_parameter("check_starting_point").value
         self.starting_point = {}  #a dictionary
 
@@ -62,17 +68,8 @@ class PublisherJointTrajectory(Node):
 
 
         # Read all end effector euler angle and position from parameters
-        self.goals = {}
-        self.center_points = {}
-        self.euler_angles = {}
-
+        self.goals = []
         for name in goal_names:
-
-            center_point = np.load(f'/home/zhanfeng/camera_ws/src/ApproxMVBB/data/output/{name}_center_point.npy')
-            euler_angle = np.load(f'/home/zhanfeng/camera_ws/src/ApproxMVBB/data/output/{name}_euler_angle.npy')
-            self.center_points[name] = center_point.tolist()
-            self.euler_angles[name] = euler_angle.tolist()
-
             self.declare_parameter(name)
             goal = self.get_parameter(name).value
             if goal is None or len(goal) == 0:
@@ -81,16 +78,44 @@ class PublisherJointTrajectory(Node):
             float_goal = []
             for value in goal:
                 float_goal.append(float(value))
-            self.goals[name] = float_goal
+            self.goals.append(float_goal)
 
 
         self.joints_goals = []
-        for name in goal_names:
+        for count, goal_value in enumerate(self.goals):
             self.get_logger().info('Calculating inverse kinematics to get joint value')
-            joints_goals_value = self.inverse_kinematics(name, self.goals[name], self.center_points[name], self.euler_angles[name])
-            self.joints_goals.append(joints_goals_value)
-        
+            start_joints_goals_value = self.inverse_kinematics(self.start_goal)
+            self.joints_goals.append(start_joints_goals_value)
+            joints_goals_value = self.inverse_kinematics(goal_value)
+            
+            pre_goal_value = goal_value
+            post_goal_value = goal_value
+            if (count == 2) or (count == 5):
+                angle = pre_goal_value[0]
+                angle = math.radians(-(angle + 90))
+                pre_goal_value[3] += 0.1 * math.sin(angle)  # add x value    
+                pre_goal_value[4] += 0.1 * math.cos(angle)   # add y value
+                pre_joints_goals_value = self.inverse_kinematics(pre_goal_value)
+                self.joints_goals.append(pre_joints_goals_value)
+                self.joints_goals.append(joints_goals_value)
+                
+                post_goal_value[5] = 0.2
+                post_joints_goals_value = self.inverse_kinematics(post_goal_value)
+                self.joints_goals.append(post_joints_goals_value)
+                
+            else:
+                pre_goal_value[5] = 0.2    # add z value
+                pre_joints_goals_value = self.inverse_kinematics(pre_goal_value)
+                self.joints_goals.append(pre_joints_goals_value)
+                self.joints_goals.append(joints_goals_value)
+                self.joints_goals.append(pre_joints_goals_value)
 
+            intermediate_joints_goals_value = self.inverse_kinematics(self.intermediate_goal)
+            self.joints_goals.append(intermediate_joints_goals_value)
+            final_joints_goals_value = self.inverse_kinematics(self.final_goal)
+            self.joints_goals.append(final_joints_goals_value)
+            
+        
 
         publish_topic = "/" + controller_name + "/" + "joint_trajectory"
 
@@ -104,7 +129,7 @@ class PublisherJointTrajectory(Node):
         self.timer = self.create_timer(wait_sec_between_publish, self.timer_callback)
         self.i = 0
         
-    def inverse_kinematics(self, name, goals_value, center_point, euler_angle):
+    def inverse_kinematics(self, goals_value):
         
         self.get_logger().info('Calculate inverse kinematics for goal value: {}'.format(goals_value))
         ur5_kinematics = ikfastpy.PyKinematics()
@@ -115,21 +140,10 @@ class PublisherJointTrajectory(Node):
         theta = math.radians(goals_value[1])
         psi = math.radians(goals_value[2])
 
-        #read real euler angle
-        phi_real = math.radians(euler_angle[0])
-        theta_real = math.radians(euler_angle[1])
-        psi_real = math.radians(euler_angle[2])
-
         #get center grasping point of object
-        x_shift = goals_value[3]
-        y_shift = goals_value[4]
-        z_shift = goals_value[5]
-        x = center_point[0]
-        y = center_point[1]
-        z = center_point[2]
-        x = x + x_shift
-        y = y + y_shift
-        z = z + z_shift
+        x = goals_value[3]
+        y = goals_value[4]
+        z = goals_value[5]
 
         #change ZYZ Euler angle to Trans Matrix for end effector (ee)
         sp = math.sin(phi)
@@ -161,17 +175,17 @@ class PublisherJointTrajectory(Node):
 #            raise Exception('The input goals is incorrect. Facing backward!')
         input_goals_ok = True
         
-        if ((az <= 0.0) and (z < 0)) or ((az > 0.5) and (z < 0.35)):
+        if ((az <= 0.0) and (z < -0.04)) or ((az > 0.5) and (z < 0.35)):
             input_goals_ok = False
             raise Exception('The soft hand grasp position is too low!')
         
         if input_goals_ok :
         
             #change from end effector Trans to the 6 joint Trans
-            zcamera_6 = -0.175    #camera: z: 175mm
-            ze_6 = -0.255    #grasp center: z: 255mm
+            #zcamera_6 = -0.175    #camera: z: 175mm
+            z_center = -0.23    #grasp center: z: 230mm
         
-            T6_0 = [[nx, ox, ax, x+ax*zcamera_6],[ny, oy, ay, y+ay*zcamera_6],[nz, oz, az, z+az*zcamera_6]]
+            T6_0 = [[nx, ox, ax, x+ax*z_center],[ny, oy, ay, y+ay*z_center],[nz, oz, az, z+az*z_center]]
         
             self.Trans = np.array(T6_0)
         
@@ -182,7 +196,7 @@ class PublisherJointTrajectory(Node):
         
             # find the best joints_goals solution
             # the best solution is chosen to be closest to desired grasp position
-            desired_joints_configs = [float(angle) for angle in [0, -90, -60, -120, 90, 0]]
+            desired_joints_configs = [float(angle) for angle in [0, -90, -60, -120, 90, 180]]
             desired_joints_configs = [math.radians(angle) for angle in desired_joints_configs]
         
             # First, the joints solution should satisfy joint limits!
@@ -190,9 +204,9 @@ class PublisherJointTrajectory(Node):
             joints_limits['shoulder_pan_joint'] = [math.radians(r) for r in [float(angle) for angle in [-90, 90+1]] ] 
             joints_limits['shoulder_lift_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, -10]] ]  # !!!!!!change -30 to -10
             joints_limits['elbow_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150,150+1]] ] 
-            joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-300, 10]] ]     # !!!!!!change 100 to 10
+            joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-180, 10]] ]     # !!!!!!change 100 to 10
             joints_limits['wrist_2_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, 145+1]] ]     # !!!!!!change 80 to 145
-            joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-181, 180]] ] 
+            joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-10, 290]] ] 
             
             valid_sols = []
             for sol in joints_configs:
