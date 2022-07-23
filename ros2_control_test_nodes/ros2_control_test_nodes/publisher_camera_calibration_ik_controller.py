@@ -18,8 +18,10 @@ from builtin_interfaces.msg import Duration
 
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Int64
 
 import math
+import time
 import numpy as np
 import ikfastpy
 
@@ -101,6 +103,7 @@ class PublisherJointTrajectory(Node):
         )
 
         self.publisher_ = self.create_publisher(JointTrajectory, publish_topic, 1)
+        self.publisher2_ = self.create_publisher(Int64, 'a', 10)
         self.timer = self.create_timer(wait_sec_between_publish, self.timer_callback)
         self.i = 0
         
@@ -218,6 +221,16 @@ class PublisherJointTrajectory(Node):
             traj.points.append(point)
             self.publisher_.publish(traj)
             self.get_logger().info('Publishing traj for point_{}'.format(self.i))
+            
+            time.sleep(self.trajectory_duration)
+            time.sleep(1)
+            self.get_logger().info('Finish moving to point_{}, publishing 1 to topic a'.format(self.i))
+
+            msg = Int64()
+            msg.data = 1
+            
+            self.publisher2_.publish(msg)
+
 
             self.i += 1
             self.i %= len(self.joints_goals)
