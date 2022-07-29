@@ -81,7 +81,7 @@ class Node_vision_based_grasp_marker_from_human(Node):
         )
 
         self.publisher_ = self.create_publisher(JointTrajectory, publish_topic, 1, callback_group=MutuallyExclusiveCallbackGroup())
-        self.timer = self.create_timer(wait_sec_between_publish, self.timer_callback)
+        self.timer = self.create_timer(wait_sec_between_publish, self.timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
         
         self.i = -1
         self.traj_arrived_for_camera = False
@@ -114,13 +114,13 @@ class Node_vision_based_grasp_marker_from_human(Node):
     def listener_callback(self, msg):
 
         while not self.traj_arrived_for_camera:
-            self.get_logger().info(termcolor.colored(f'Stucked in the marker detection algorithm', 'blue'))
+            #self.get_logger().info(termcolor.colored(f'Stucked in the marker detection algorithm', 'cyan'))
             pass
 
         if self.joint_state_msg_received and (self.i == 0) :
 
             self.marker_pos_array = msg.data
-            self.get_logger().info(termcolor.colored(f'Marker detected, the marker position array is {self.marker_pos_array}', 'blue'))
+            self.get_logger().info(termcolor.colored(f'Marker detected, the marker position array is {self.marker_pos_array}', 'cyan'))
             Trans_camera2base = self.camera2base_transform()
             self.marker_pos_array_global = np.array(
                 [self.marker_pos_array[0], self.marker_pos_array[1], self.marker_pos_array[2], 1])
@@ -138,7 +138,7 @@ class Node_vision_based_grasp_marker_from_human(Node):
             self.joints_goals[1] = new_grasp_joints_goals_value
 
         else:
-            self.get_logger().info(termcolor.colored('No Marker detected', 'blue'))
+            self.get_logger().info(termcolor.colored('No Marker detected', 'cyan'))
             return
 
         
@@ -325,12 +325,12 @@ class Node_vision_based_grasp_marker_from_human(Node):
                 return best_joints_config
 
     def timer_callback(self):
-        self.get_logger().info(termcolor.colored('Robotic arm start moving', 'yollow'))
+        self.get_logger().info(termcolor.colored('Timer: Robotic arm start moving', 'yellow'))
         self.traj_arrived_for_hand = False
         self.traj_arrived_for_camera = False
         self.i += 1   
         self.i %= len(self.joints_goals)
-        self.get_logger().info(termcolor.colored('Self.i = {}'.format(self.i), 'yollow'))
+        self.get_logger().info(termcolor.colored('Timer: Self.i = {}'.format(self.i), 'yellow'))
 
         traj = JointTrajectory()
         traj.joint_names = self.joints
@@ -340,7 +340,7 @@ class Node_vision_based_grasp_marker_from_human(Node):
         point.time_from_start = Duration(sec=self.trajectory_duration)
         traj.points.append(point)
         self.publisher_.publish(traj)
-        self.get_logger().info(termcolor.colored('Publishing traj for point_{}'.format(self.i), 'yollow'))
+        self.get_logger().info(termcolor.colored('Timer: Publishing traj for point_{}'.format(self.i), 'yellow'))
 
         if self.i == 1 :
             self.joints_goals[1] = self.start_joints_goals_value
@@ -349,7 +349,7 @@ class Node_vision_based_grasp_marker_from_human(Node):
         time.sleep(self.trajectory_duration)
         self.traj_arrived_for_hand = True
         self.traj_arrived_for_camera = True
-        self.get_logger().info(termcolor.colored('The traj time for point_{} is arrived'.format(self.i), 'yollow'))
+        self.get_logger().info(termcolor.colored('The traj time for point_{} is arrived'.format(self.i), 'yellow'))
 
 
         if not self.joint_state_msg_received:
@@ -361,7 +361,7 @@ class Node_vision_based_grasp_marker_from_human(Node):
         # get joint angle feedback from the robotic arm motor.
 
         while not self.traj_arrived_for_camera:
-            self.get_logger().info(termcolor.colored(f'Stucked in the joint state callback function', 'blue'))
+            #self.get_logger().info(termcolor.colored(f'Stucked in the joint state callback function', 'blue'))
             pass
 
         #self.get_logger().info(f'Joint state name: {msg.name}')
