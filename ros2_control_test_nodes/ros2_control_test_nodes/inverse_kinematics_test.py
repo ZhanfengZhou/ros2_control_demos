@@ -11,8 +11,7 @@ from sensor_msgs.msg import JointState
 # Read all end effector euler angle and position from parameters
 #goals = [[-90.0, 90.0, 90.0, 0.6, -0.109, 0.3],[-90.0, 90.0, 90.0, 0.4, -0.109, 0.6],[-90.0, 90.0, 90.0, 0.4, -0.3, 0.6],[-90.0, 90.0, 90.0, 0.4, -0.3, 0.3]]
 #goals = [[-89.9, -179.9, 89.9, 0.4, -0.109, 0.3],]   #okay....should be have 0.1 degree input error to make the ikfastpy code working!!!!!! 
-goals = [[-90.0, 90.0, 90.0, 0.3, -0.3, 0.25]]
-
+goals = [[-89.9, 0.1, 0.0, 0.6, -0.10, 0.65]]
 
 
 joints_goals = []
@@ -80,8 +79,7 @@ for goals_value in goals:
         raise Exception('The soft hand grasp position is too low!')
         
     #change from end effector Trans to the 6 joint Trans
-    ze_6 = -0.175    #camera: z: 175mm
-    zcamera_6 = -0.255    #grasp center: z: 255mm
+    ze_6 = -0.2    #camera: z: 175mm
         
     T6_0 = [[nx, ox, ax, x+ax*ze_6],[ny, oy, ay, y+ay*ze_6],[nz, oz, az, z+az*ze_6]]
     #print(f"T6_0 pose: \n {T6_0}")
@@ -104,9 +102,9 @@ for goals_value in goals:
     joints_limits['shoulder_lift_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, -10]] ]  # !!!!!!change -30 to -10
     joints_limits['elbow_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150,15+1]] ] 
     joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-230, 10]] ]     # lateral grasp
-    #joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-130, 130]] ]     # vertical grasp
+    #joints_limits['wrist_1_joint'] = [math.radians(r) for r in [float(angle) for angle in [-180, 130]] ]     # vertical grasp
     joints_limits['wrist_2_joint'] = [math.radians(r) for r in [float(angle) for angle in [-150, 145+1]] ]     # !!!!!!change 80 to 145
-    joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-180, 225]] ] 
+    joints_limits['wrist_3_joint'] = [math.radians(r) for r in [float(angle) for angle in [-180, 350]] ] 
     print(f'joints limits: {joints_limits}')
     
     joints = ['shoulder_pan_joint', 'shoulder_lift_joint', 'elbow_joint', 'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']

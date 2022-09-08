@@ -66,8 +66,12 @@ Demo nodes for showing and testing functionalities of the ros2_control framework
                 ros2_control_test_nodes.publisher_vision_guided_grasp_test_controller:main",
             "publisher_vision_based_grasp_controller = \
                 ros2_control_test_nodes.publisher_vision_based_grasp_preset_controller:main",
+            "publisher_grasp_from_human_5direction_controller = \
+                ros2_control_test_nodes.publisher_grasp_from_human_5direction_controller:main",
             "node_vision_based_grasp_marker_from_human = \
                 ros2_control_test_nodes.node_vision_based_grasp_marker_from_human:main",    
+            "node_human_robot_interactive_grasp_with_marker = \
+                ros2_control_test_nodes.node_human_robot_interactive_grasp_with_marker:main",  
         ],
     },
 )

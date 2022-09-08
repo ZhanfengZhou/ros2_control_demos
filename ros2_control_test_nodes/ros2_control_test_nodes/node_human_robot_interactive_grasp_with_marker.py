@@ -14,6 +14,7 @@ from builtin_interfaces.msg import Duration
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sensor_msgs.msg import JointState
 
+from scipy.spatial.transform import Rotation
 from example_interfaces.srv import SetBool
 
 import math
@@ -69,8 +70,6 @@ class Node_vision_based_grasp_marker_from_human(Node):
         self.joints_goals.append(self.grasp_joints_goals_value)
 
 
-
-
         ## Create a publisher to publish joint goal to robotic arm with a timer
         publish_topic = "/" + controller_name + "/" + "joint_trajectory"
 
@@ -87,7 +86,7 @@ class Node_vision_based_grasp_marker_from_human(Node):
         self.traj_arrived_for_camera = False
         self.traj_arrived_for_hand = False
         self.marker_detected = False
-
+        self.request_sent_to_softhand = False
 
         ## Create a subsriber for reading joint state
         self.joint_state_sub = self.create_subscription(
@@ -99,7 +98,7 @@ class Node_vision_based_grasp_marker_from_human(Node):
         ## Create a subsriber for reading object position from camera topic, "topic2"
         self.subscription = self.create_subscription(
             Float32MultiArray,
-            'topic2',
+            'pose_topic',
             self.listener_callback,
             10, callback_group=MutuallyExclusiveCallbackGroup())
         self.subscription  # prevent unused variable warning           
@@ -117,22 +116,39 @@ class Node_vision_based_grasp_marker_from_human(Node):
             #self.get_logger().info(termcolor.colored(f'Stucked in the marker detection algorithm', 'cyan'))
             pass
 
-        if self.joint_state_msg_received and (self.i == 0) :
+        if self.joint_state_msg_received and (self.i == 0) and (self.marker_detected == False):
 
-            self.marker_pos_array = msg.data
-            self.get_logger().info(termcolor.colored(f'Marker detected, the marker position array is {self.marker_pos_array}', 'cyan'))
+            marker_pose_array = msg.data
+            self.get_logger().info(termcolor.colored(f'Marker detected, the marker pose array input is {marker_pose_array}', 'cyan'))
+
             Trans_camera2base = self.camera2base_transform()
-            self.marker_pos_array_global = np.array(
-                [self.marker_pos_array[0], self.marker_pos_array[1], self.marker_pos_array[2], 1])
+            marker_pose_euler_angle = np.array(
+                [marker_pose_array[0], (marker_pose_array[1]), marker_pose_array[2]])
+            marker_position_array = np.array(
+                [[marker_pose_array[3], marker_pose_array[4], marker_pose_array[5], 1]])
 
-            self.marker_pos_array_global_matrix = np.matrix(
-                self.marker_pos_array_global).transpose()
+            Trans_marker2hand = Rotation.from_euler('Y', 180, degrees=True)
+            Trans_marker2hand_matrix = Trans_marker2hand.as_matrix()
+            
+            marker_pose_array = Rotation.from_euler('ZYZ', marker_pose_euler_angle, degrees=True)
+            marker_pose_array = marker_pose_array.as_matrix()
 
-            self.marker_pos_array_global_matrix = np.matmul(
-                Trans_camera2base, self.marker_pos_array_global_matrix)
-            #self.get_logger().info(f'INput: {Trans_camera2base}, \t  {self.marker_pos_array_global}, \t Output: self.marker_pos_array_global_matrix is {self.marker_pos_array_global_matrix}')
+            marker_pose_array = np.matmul(marker_pose_array, Trans_marker2hand_matrix)
 
-            self.new_grasp_goal = [self.grasp_goal[0], self.grasp_goal[1], self.grasp_goal[2], self.marker_pos_array_global_matrix[0,0], self.marker_pos_array_global_matrix[1, 0], self.marker_pos_array_global_matrix[2, 0]]
+            marker_pose_array = np.concatenate((marker_pose_array, np.array([[0.0, 0.0, 0.0]])), axis=0)
+            marker_pose_array = np.concatenate((marker_pose_array, marker_position_array.transpose()), axis=1)
+            self.get_logger().info(termcolor.colored(f'Marker detected, the marker pose array is {marker_pose_array}', 'cyan'))
+
+            marker_pose_matrix_2base = np.matmul(Trans_camera2base, marker_pose_array)
+            
+            marker_pose_euler_matrix_2base = marker_pose_matrix_2base[0:3, 0:3]
+            marker_pose_euler_angle_new = Rotation.from_matrix(marker_pose_euler_matrix_2base)
+            marker_pose_euler_angle_new = marker_pose_euler_angle_new.as_euler('ZYZ', degrees=True)
+
+            self.new_grasp_goal = [round(marker_pose_euler_angle_new[0],0), round(marker_pose_euler_angle_new[1],0), round(marker_pose_euler_angle_new[2],0),
+                                   marker_pose_matrix_2base[0,3], marker_pose_matrix_2base[1,3], marker_pose_matrix_2base[2,3]]
+
+            self.get_logger().info(termcolor.colored(f'Marker pose array to base is {self.new_grasp_goal}', 'cyan'))
 
             new_grasp_joints_goals_value = self.inverse_kinematics(self.new_grasp_goal)
             self.joints_goals[1] = new_grasp_joints_goals_value
@@ -342,17 +358,21 @@ class Node_vision_based_grasp_marker_from_human(Node):
         traj.points.append(point)
         self.publisher_.publish(traj)
         self.get_logger().info(termcolor.colored('Timer: Publishing traj for point_{}'.format(self.i), 'yellow'))
-
-        if self.i == 1 :
-            self.joints_goals[1] = self.start_joints_goals_value
-            self.marker_detected = False
-        
     
         time.sleep(self.trajectory_duration)
         self.traj_arrived_for_hand = True
         self.traj_arrived_for_camera = True
         self.get_logger().info(termcolor.colored('The traj time for point_{} is arrived'.format(self.i), 'yellow'))
 
+        while not self.request_sent_to_softhand:
+            self.get_logger().info(termcolor.colored('Waiting for sending request to softhand', 'yellow'))
+            time.sleep(0.5)
+            pass
+        self.request_sent_to_softhand = False
+
+        if self.i == 1 :
+            self.joints_goals[1] = self.start_joints_goals_value
+            self.marker_detected = False        
 
         if not self.joint_state_msg_received:
             self.get_logger().warn(
@@ -367,7 +387,7 @@ class Node_vision_based_grasp_marker_from_human(Node):
             pass
 
         #self.get_logger().info(f'Joint state name: {msg.name}')
-        self.get_logger().info(f'Joint state position: {msg.position}')  # in radius; msg.position is a numpy array
+        #self.get_logger().info(f'Joint state position: {msg.position}')  # in radius; msg.position is a numpy array
         shoulder_pan_joint_angle = msg.position[2]
         shoulder_lift_joint_angle = msg.position[1]
         elbow_joint_angle = msg.position[0]
@@ -392,7 +412,7 @@ class Node_vision_based_grasp_marker_from_human(Node):
             while not self.traj_arrived_for_hand:
                 pass
 
-            self.get_logger().info(termcolor.colored("Robotic arm stop moving", 'green'))
+            self.get_logger().info(termcolor.colored(f'Robotic arm arrived point_{self.i}, receiving msg from camera', 'green'))
             self.request = SetBool.Request()
             
             if (self.i == 0):
@@ -402,8 +422,11 @@ class Node_vision_based_grasp_marker_from_human(Node):
                 while not future.done():
                     pass
                 self.get_logger().info(termcolor.colored(f'Response Received: Object released', 'green'))
+
+                self.request_sent_to_softhand = True
+
             elif (self.i == 1):
-                if self.marker_detected == True:
+                if self.marker_detected == True:  
                     self.request.data = True
                     future = self.client.call_async(self.request)
                     self.get_logger().info(termcolor.colored("Requests Sent to Soft robotic hand to grasp object", 'green'))
@@ -411,7 +434,10 @@ class Node_vision_based_grasp_marker_from_human(Node):
                         pass
                     self.get_logger().info(termcolor.colored(f'Response Received: Object grasped', 'green'))
                 else:
-                    self.get_logger().info(termcolor.colored(f'No marker detected by camera: No request sent to robotic hand', 'green'))
+                    self.get_logger().info(termcolor.colored(f'No request sent to soft hand: No marker detected', 'green'))
+
+                self.request_sent_to_softhand = True
+
             else:
                 raise Exception('Node initializaiton error!!!')
             
