@@ -8,7 +8,6 @@ from rclpy.executors import MultiThreadedExecutor
 
 from threading import Thread
 
-from std_msgs.msg import Float32MultiArray
 from builtin_interfaces.msg import Duration
 
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -16,7 +15,7 @@ from sensor_msgs.msg import JointState
 
 from scipy.spatial.transform import Rotation
 from example_interfaces.srv import SetBool
-from ur_msgs import YOLOOutput
+from ur_msgs.srv import YOLOOutput, Task
 
 import math
 import time
@@ -41,10 +40,13 @@ class Node_vision_based_grasp_object_from_human(Node):
         self.declare_parameter("controller_name", "position_trajectory_controller")
         self.declare_parameter("wait_sec_between_publish", 8)
         self.declare_parameter("trajectory_duration", 6)
+        self.declare_parameter("sleep_goal")
         self.declare_parameter("start_goal")
         self.declare_parameter("grasp_goal")
+        self.declare_parameter("grasp_goal_top")
+        self.declare_parameter("grasp_goal_bottom")
+        self.declare_parameter("final_goal")
         self.declare_parameter("joints")
-
 
         ## Read parameters
         controller_name = self.get_parameter("controller_name").value
@@ -53,94 +55,143 @@ class Node_vision_based_grasp_object_from_human(Node):
         self.trajectory_duration = self.get_parameter(
             "trajectory_duration").value
         self.joints = self.get_parameter("joints").value
+        self.sleep_goal = self.get_parameter("sleep_goal").value
         self.start_goal = self.get_parameter("start_goal").value
         self.grasp_goal = self.get_parameter("grasp_goal").value
+        self.grasp_goal_top = self.get_parameter("grasp_goal_top").value
+        self.grasp_goal_bottom = self.get_parameter("grasp_goal_bottom").value
+        self.final_goal = self.get_parameter("final_goal").value
 
         if self.joints is None or len(self.joints) == 0:
             raise Exception('"joints" parameter is not set!')
 
-        ## Read all end effector euler angle and position from parameters
-        self.joints_goals = []
+        ## Read all end effector goal and transform to joint goal of robotic arm
         self.get_logger().info('Calculating inverse kinematics to get joint value')
 
-        self.start_joints_goals_value = self.inverse_kinematics(self.start_goal)
-        self.joints_goals.append(self.start_joints_goals_value)
+        self.sleep_joints_goals = self.inverse_kinematics(self.sleep_goal)
+        self.start_joints_goals = self.inverse_kinematics(self.start_goal)
 
+        self.grasp_joints_goals = []
         self.grasp_joints_goals_value = self.inverse_kinematics(self.grasp_goal)
-        self.joints_goals.append(self.grasp_joints_goals_value)
-
+        self.final_joints_goals_value = self.inverse_kinematics(self.grasp_goal)
+        self.grasp_joints_goals.append(self.grasp_joints_goals)
+        self.grasp_joints_goals.append(self.final_joints_goals)
+        self.grasp_joints_goals.append(self.start_joints_goals)
+        
 
         ## Create a publisher to publish joint goal to robotic arm with a timer
         publish_topic = "/" + controller_name + "/" + "joint_trajectory"
 
-        self.get_logger().info(
-            'Publishing joints goals on topic "{}" every {} s'.format(
-                publish_topic, wait_sec_between_publish
-            )
-        )
-
+        self.get_logger().info('Publishing joints goals on topic "{}" every {} s'.format(publish_topic, wait_sec_between_publish))
         self.publisher_ = self.create_publisher(JointTrajectory, publish_topic, 1, callback_group=MutuallyExclusiveCallbackGroup())
-        self.timer = self.create_timer(wait_sec_between_publish, self.timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
+        #self.timer = self.create_timer(wait_sec_between_publish, self.timer_callback, callback_group=MutuallyExclusiveCallbackGroup())
         
         self.i = -1
         self.traj_arrived_for_camera = False
         self.traj_arrived_for_hand = False
-        self.object_detected = False
         self.request_sent_to_softhand = False
+
 
         ## Create a subsriber for reading joint state
         self.joint_state_sub = self.create_subscription(
-            JointState, "joint_states", self.joint_state_callback, 10, callback_group=MutuallyExclusiveCallbackGroup()
+            JointState, 
+            "joint_states", 
+            self.joint_state_callback, 
+            10, callback_group=MutuallyExclusiveCallbackGroup()
         )
         # joint_state_callback can be used to get current position of joints
         self.joint_state_msg_received = False
 
-        ## Create a subsriber for reading object position from camera topic, "topic2"
-        self.subscription = self.create_subscription(
-            Float32MultiArray,
+
+        ## Create a service for reveiving object center info from yolo detect client: "yolo_xyz"
+        self.yoloservice = self.create_service(
+            YOLOOutput,
             'yolo_xyz',
-            self.listener_callback,
-            10, callback_group=MutuallyExclusiveCallbackGroup())
-        self.subscription  # prevent unused variable warning           
+            self.yoloservice_callback,
+            callback_group=MutuallyExclusiveCallbackGroup()
+        )       
+
+
+        ## Create a service for reveiving task number, "task"
+        self.taskservice = self.create_service(
+            Task,
+            'task',
+            self.taskservice_callback,
+            callback_group=MutuallyExclusiveCallbackGroup()
+        )       
+        self.task_num = 0
 
         ## Create a client to send request to soft robotic hand to grasp object
-        self.client = self.create_client(SetBool, 'Grasp_object', callback_group=MutuallyExclusiveCallbackGroup())
+        self.client = self.create_client(
+            SetBool, 
+            'Grasp_object', 
+            callback_group=MutuallyExclusiveCallbackGroup()
+        )
 
         while not self.client.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('service not available, waiting again...')
+    
+    
+    
+    def taskservice_callback(self, request, response):
+        self.task_num = request.task
+
+        self.get_logger().info(termcolor.colored(
+            f'task request received, task number: {self.task_num}', 'cyan'))
+        
+        response.success = True
+        return response
 
 
+    def yoloservice_callback(self, request, response):
+        object_x = request.object_center_x
+        object_y = request.object_center_y
+        object_z = request.object_center_z
+        grasp_dir = request.grasp_dir
 
-    def listener_callback(self, msg):
+        self.get_logger().info(termcolor.colored(
+            f'yolo request received, object center: [{object_x}, {object_y}, {object_z}, {grasp_dir}]', 'cyan'))
 
-        while not self.traj_arrived_for_camera:
-            #self.get_logger().info(termcolor.colored(f'Stucked in the object detection algorithm', 'cyan'))
-            pass
-
-        if self.joint_state_msg_received and (self.i == 0) and (self.object_detected == False):
-
-            self.object_pos_array = msg.data
-            self.get_logger().info(termcolor.colored(f'Object detected, the object position array is {self.object_pos_array}', 'cyan'))
+        if self.traj_arrived_for_camera and self.joint_state_msg_received and (self.i == 0):
+            self.object_pos = [object_x, object_y, object_z]
             Trans_camera2base = self.camera2base_transform()
-            self.object_pos_array_global = np.array(
-                [self.object_pos_array[0], self.object_pos_array[1], self.object_pos_array[2], 1])
+            self.object_pos_array = np.array(
+                [self.object_pos[0], self.object_pos[1], self.object_pos[2], 1])
+            self.object_pos_array = np.matrix(self.object_pos_array).transpose()
+            self.object_pos_array_global = np.matmul(Trans_camera2base, self.object_pos_array)
 
-            self.object_pos_array_global_matrix = np.matrix(
-                self.object_pos_array_global).transpose()
+            if int(grasp_dir) == 1:
+                self.get_logger().info(termcolor.colored(
+                    f'Grasp object from forward direction', 'cyan'))
+            elif int(grasp_dir) == 2:
+                self.grasp_goal = self.grasp_goal_top
+                self.get_logger().info(termcolor.colored(
+                    f'Grasp object from top direction', 'cyan'))
+            elif int(grasp_dir) == 3:
+                self.grasp_goal = self.grasp_goal_bottom
+                self.get_logger().info(termcolor.colored(
+                    f'Grasp object from bottom direction', 'cyan'))
+            else:
+                self.get_logger().info(termcolor.colored(
+                    f'Wrong direction input from yolo detect', 'cyan'))
 
-            self.object_pos_array_global_matrix = np.matmul(
-                Trans_camera2base, self.object_pos_array_global_matrix)
-            #self.get_logger().info(f'INput: {Trans_camera2base}, \t  {self.object_pos_array_global}, \t Output: self.object_pos_array_global_matrix is {self.object_pos_array_global_matrix}')
-
-            self.new_grasp_goal = [self.grasp_goal[0], self.grasp_goal[1], self.grasp_goal[2], self.object_pos_array_global_matrix[0,0], self.object_pos_array_global_matrix[1, 0], self.object_pos_array_global_matrix[2, 0]]
+            self.new_grasp_goal = [
+                self.grasp_goal[0], 
+                self.grasp_goal[1], 
+                self.grasp_goal[2], 
+                self.object_pos_array_global[0,0], 
+                self.object_pos_array_global[1,0], 
+                self.object_pos_array_global[2,0]
+            ]
 
             new_grasp_joints_goals_value = self.inverse_kinematics(self.new_grasp_goal)
             self.joints_goals[1] = new_grasp_joints_goals_value
 
-            self.object_detected = True
+            self.get_logger().info(termcolor.colored(
+                f'Object grasp target sent to the robotic arm successfully', 'cyan'))
 
-        else:
-            return
+        response.success = True
+        return response
 
         
 
@@ -325,6 +376,46 @@ class Node_vision_based_grasp_object_from_human(Node):
                 )
                 return best_joints_config
 
+    
+    def run(self):
+        self.get_logger().info(termcolor.colored('Robotic arm initializing', 'yellow'))
+
+        # First move to sleep position
+        self.pub_joint_traj(self.sleep_joints_goals, self.sleep_traj_duration)
+
+        while True:
+            if (self.task_num == 1):  # task num 1: move to sleep position
+                self.pub_joint_traj(self.sleep_joints_goals, self.sleep_traj_duration)
+            elif (self.task_num == 2):  # task num 2: move to sleep position
+                self.pub_joint_traj(self.start_joints_goals, self.start_traj_duration)
+            elif (self.task_num == 3):  # task num 3: grasp object and place to final position
+                self.pub_joint_traj(self.grasp_joints_goals[0], self.grasp_traj_duration1)
+                    #request soft hand grasp object
+
+
+                self.pub_joint_traj(self.grasp_joints_goals[1], self.grasp_traj_duration2)
+                    #request soft hand release object
+
+                    
+                self.pub_joint_traj(self.grasp_joints_goals[2], self.grasp_traj_duration3) 
+                self.task_num == 0
+    
+    
+
+    def pub_joint_traj(self, joints_goals, traj_duration):
+        traj = JointTrajectory()
+        traj.joint_names = self.joints
+        point = JointTrajectoryPoint()
+        point.positions = joints_goals   # list
+        point.time_from_start = Duration(sec=traj_duration)
+        traj.points.append(point)
+        self.publisher_.publish(traj)
+        self.get_logger().info(termcolor.colored('Publishing trajectory to robotic arm joints', 'yellow'))
+    
+        time.sleep(traj_duration)
+        time.sleep(1)
+
+    
     def timer_callback(self):
         self.get_logger().info(termcolor.colored('Timer: Robotic arm start moving', 'yellow'))
         self.traj_arrived_for_hand = False
@@ -355,8 +446,7 @@ class Node_vision_based_grasp_object_from_human(Node):
         self.request_sent_to_softhand = False
 
         if self.i == 1 :
-            self.joints_goals[1] = self.start_joints_goals_value
-            self.object_detected = False        
+            self.joints_goals[1] = self.start_joints_goals_value     
 
         if not self.joint_state_msg_received:
             self.get_logger().warn(
