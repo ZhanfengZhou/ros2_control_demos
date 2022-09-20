@@ -76,6 +76,8 @@ Demo nodes for showing and testing functionalities of the ros2_control framework
                 ros2_control_test_nodes.node_human_robot_interactive_grasp_yolo:main", 
             "node_human_robot_interactive_grasp_yolo_server = \
                 ros2_control_test_nodes.node_human_robot_interactive_grasp_yolo_server:main",  
+            "node_interactive_grasp_from_human_and_table_yolo_server = \
+                ros2_control_test_nodes.node_interactive_grasp_from_human_and_table_yolo_server:main",  
         ],
     },
 )

@@ -14,12 +14,13 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sensor_msgs.msg import JointState
 
 from example_interfaces.srv import SetBool
-from ur_msgs.srv import YOLOOutput, Task
+from ur_msgs.srv import YOLOOutput, Task, YOLOOutputList
 
 import math
 import time
 import numpy as np
 import ikfastpy
+import copy
 from math import cos as cos
 from math import sin as sin
 from math import atan2 as atan2
@@ -27,7 +28,6 @@ from math import acos as acos
 from math import asin as asin
 from math import sqrt as sqrt
 from math import pi as pi
-
 import termcolor
 
 
@@ -40,13 +40,23 @@ class Node_vision_based_grasp_object_from_table(Node):
         self.declare_parameter("to_sleep_traj_duration", 6)
         self.declare_parameter("to_start_traj_duration", 6)
         self.declare_parameter("to_grasp_traj_duration", 6)
+        self.declare_parameter("to_grasp_traj_duration2", 1)
         self.declare_parameter("to_final_traj_duration", 6)
+
+        self.declare_parameter("table_start_traj_duration", 6)
+        self.declare_parameter("table_scan_traj_duration", 1)
+        self.declare_parameter("table_grasp_traj_duration", 6)
+
         self.declare_parameter("sleep_goal")
         self.declare_parameter("start_goal")
         self.declare_parameter("grasp_goal")
         self.declare_parameter("grasp_goal_top")
         self.declare_parameter("grasp_goal_bottom")
         self.declare_parameter("final_goal")
+
+        self.declare_parameter("start_goal_table")
+        self.declare_parameter("grasp_goal_table")
+        self.declare_parameter("scan_dis_table")
         self.declare_parameter("joints")
 
         ## Read parameters
@@ -54,25 +64,52 @@ class Node_vision_based_grasp_object_from_table(Node):
         self.sleep_traj_duration = self.get_parameter("to_sleep_traj_duration").value
         self.start_traj_duration = self.get_parameter("to_start_traj_duration").value
         self.grasp_traj_duration = self.get_parameter("to_grasp_traj_duration").value
+        self.grasp_traj_duration2 = self.get_parameter("to_grasp_traj_duration2").value
         self.final_traj_duration = self.get_parameter("to_final_traj_duration").value
+
+        self.table_start_traj_duration = self.get_parameter("table_start_traj_duration").value
+        self.table_scan_traj_duration = self.get_parameter("table_scan_traj_duration").value
+        self.table_grasp_traj_duration = self.get_parameter("table_grasp_traj_duration").value
+
         self.joints = self.get_parameter("joints").value
         self.sleep_goal = self.get_parameter("sleep_goal").value
         self.start_goal = self.get_parameter("start_goal").value
         self.grasp_goal = self.get_parameter("grasp_goal").value
         self.grasp_goal_top = self.get_parameter("grasp_goal_top").value
         self.grasp_goal_bottom = self.get_parameter("grasp_goal_bottom").value
+
+        self.start_goal_table = self.get_parameter("start_goal_table").value
+        self.grasp_goal_table = self.get_parameter("grasp_goal_table").value
+        self.scan_dis_table = self.get_parameter("scan_dis_table").value
         self.final_goal = self.get_parameter("final_goal").value
+
 
         if self.joints is None or len(self.joints) == 0:
             raise Exception('"joints" parameter is not set!')
+
 
         ## Read all end effector goal and transform to joint goal of robotic arm
         self.get_logger().info('Calculating inverse kinematics to get joint value')
         self.sleep_joints_goals = self.inverse_kinematics(self.sleep_goal)
         self.start_joints_goals = self.inverse_kinematics(self.start_goal)
-        self.grasp_joints_goals = []
-        self.grasp_joints_goals.append(self.inverse_kinematics(self.grasp_goal))
         self.final_joints_goals = self.inverse_kinematics(self.final_goal)
+        
+        self.table_scan_joint_goals = []
+        self.table_scan_joint_goals.append(self.inverse_kinematics(self.start_goal_table))
+        self.start_goal_table_left = copy.deepcopy(self.start_goal_table)
+        self.start_goal_table_right = copy.deepcopy(self.start_goal_table)
+        self.start_goal_table_left[4] = self.start_goal_table_left[4] - self.scan_dis_table
+        self.table_scan_joint_goals.append(self.inverse_kinematics(self.start_goal_table_left))
+        self.start_goal_table_right[4] = self.start_goal_table_right[4] + self.scan_dis_table
+        self.table_scan_joint_goals.append(self.inverse_kinematics(self.start_goal_table_right))
+        self.table_scan_joint_goals.append(self.inverse_kinematics(self.start_goal_table))
+
+        self.table_scan_duration_list = []
+        self.table_scan_duration_list.append(self.table_start_traj_duration)
+        self.table_scan_duration_list.append(self.table_scan_traj_duration)
+        self.table_scan_duration_list.append(self.table_scan_traj_duration)
+        self.table_scan_duration_list.append(self.table_scan_traj_duration)
+
 
 
         ## Create a publisher to publish joint goal to robotic arm with a timer
@@ -104,6 +141,15 @@ class Node_vision_based_grasp_object_from_table(Node):
             self.yoloservice_callback,
             callback_group=MutuallyExclusiveCallbackGroup()
         )       
+
+
+        ## Create a service for reveiving center list of objects on table from yolo detect client: "yolo_xyz_list"
+        self.yoloservice_table = self.create_service(
+            YOLOOutputList,
+            'yolo_xyz_list',
+            self.yoloservice_table_callback,
+            callback_group=MutuallyExclusiveCallbackGroup()
+        )    
 
 
         ## Create a service for reveiving task number, "task"
@@ -140,6 +186,46 @@ class Node_vision_based_grasp_object_from_table(Node):
         return response
 
 
+    def yoloservice_table_callback(self, request, response):
+        self.get_logger().info(termcolor.colored('yoloservice_table_callback is called', 'cyan'))
+        object_x_list = request.object_center_x
+        object_y_list = request.object_center_y
+        object_z_list = request.object_center_z
+
+        self.grasp_table_joints_goals = []
+        for i in range(len(object_x_list)):
+            self.get_logger().info(termcolor.colored(
+                f'yolo request received, object center: [{object_x_list[i]}, {object_y_list[i]}, {object_z_list[i]}]', 'cyan'))
+
+            if self.joint_state_msg_received:
+                object_pos = [object_x_list[i], object_y_list[i], object_z_list[i]]
+                Trans_camera2base = self.camera2base_transform()
+                object_pos_array = np.array(
+                    [object_pos[0], object_pos[1], object_pos[2], 1])
+                object_pos_array = np.matrix(object_pos_array).transpose()
+                object_pos_array_global = np.matmul(Trans_camera2base, object_pos_array)
+                
+                new_grasp_goal_table = [
+                    self.grasp_goal_table[0], 
+                    self.grasp_goal_table[1], 
+                    self.grasp_goal_table[2], 
+                    object_pos_array_global[0,0], 
+                    object_pos_array_global[1,0], 
+                    object_pos_array_global[2,0]
+                ]
+                new_grasp_joints_goals_value = self.inverse_kinematics(new_grasp_goal_table)
+                self.grasp_table_joints_goals.append(new_grasp_joints_goals_value)
+
+            self.get_logger().info(termcolor.colored(
+                f'Object grasp target sent to the robotic arm successfully', 'cyan'))
+            # else:
+            #     self.get_logger().warn('Start configuration could not be checked! Check "joint_state" topic!')
+
+        response.success = True
+        return response
+
+
+
     def yoloservice_callback(self, request, response):
         self.get_logger().info(termcolor.colored('yoloservice_callback is called', 'cyan'))
         object_x = request.object_center_x
@@ -151,80 +237,90 @@ class Node_vision_based_grasp_object_from_table(Node):
             f'yolo request received, object center: [{object_x}, {object_y}, {object_z}, {grasp_dir}]', 'cyan'))
 
         if self.joint_state_msg_received:
-            self.object_pos = [object_x, object_y, object_z]
+            object_pos = [object_x, object_y, object_z]
             Trans_camera2base = self.camera2base_transform()
-            self.object_pos_array = np.array(
-                [self.object_pos[0], self.object_pos[1], self.object_pos[2], 1])
-            self.object_pos_array = np.matrix(self.object_pos_array).transpose()
-            self.object_pos_array_global = np.matmul(Trans_camera2base, self.object_pos_array)
-
+            object_pos_array = np.array(
+                [object_pos[0], object_pos[1], object_pos[2], 1])
+            object_pos_array = np.matrix(object_pos_array).transpose()
+            object_pos_array_global = np.matmul(Trans_camera2base, object_pos_array)
+            
+            self.grasp_joints_goals = []
+            self.grasp_traj_duration_list = []
             if int(grasp_dir) == 1:
                 self.get_logger().info(termcolor.colored(
                     f'Grasp object from forward direction', 'cyan'))
-                self.new_grasp_goal = [
+                new_grasp_goal = [
                     self.grasp_goal[0], 
                     self.grasp_goal[1], 
                     self.grasp_goal[2], 
-                    self.object_pos_array_global[0,0], 
-                    self.object_pos_array_global[1,0], 
-                    self.object_pos_array_global[2,0]
+                    object_pos_array_global[0,0], 
+                    object_pos_array_global[1,0], 
+                    object_pos_array_global[2,0]
                 ]
-                new_grasp_joints_goals_value = self.inverse_kinematics(self.new_grasp_goal)
-                self.grasp_joints_goals[0] = new_grasp_joints_goals_value
+                new_grasp_joints_goals_value = self.inverse_kinematics(new_grasp_goal)
+                self.grasp_joints_goals.append(new_grasp_joints_goals_value)
+                self.grasp_traj_duration_list.append(self.grasp_traj_duration)
 
             elif int(grasp_dir) == 2:
                 self.grasp_goal = self.grasp_goal_top
                 self.get_logger().info(termcolor.colored(
                     f'Grasp object from top direction', 'cyan'))
 
-                self.new_grasp_goal = [
+                new_grasp_goal = [
                     self.grasp_goal[0], 
                     self.grasp_goal[1], 
                     self.grasp_goal[2], 
-                    self.object_pos_array_global[0,0], 
-                    self.object_pos_array_global[1,0], 
-                    self.object_pos_array_global[2,0]+0.01
+                    object_pos_array_global[0,0], 
+                    object_pos_array_global[1,0], 
+                    object_pos_array_global[2,0]+0.01
                 ]
-                new_grasp_joints_goals_value = self.inverse_kinematics(self.new_grasp_goal)
-                self.grasp_joints_goals[0] = new_grasp_joints_goals_value
-                
-                self.new_grasp_goal = [
-                    self.grasp_goal[0], 
-                    self.grasp_goal[1], 
-                    self.grasp_goal[2], 
-                    self.object_pos_array_global[0,0], 
-                    self.object_pos_array_global[1,0], 
-                    self.object_pos_array_global[2,0]
-                ]
-                new_grasp_joints_goals_value = self.inverse_kinematics(self.new_grasp_goal)
+                new_grasp_joints_goals_value = self.inverse_kinematics(new_grasp_goal)
                 self.grasp_joints_goals.append(new_grasp_joints_goals_value)
+                
+                new_grasp_goal = [
+                    self.grasp_goal[0], 
+                    self.grasp_goal[1], 
+                    self.grasp_goal[2], 
+                    object_pos_array_global[0,0], 
+                    object_pos_array_global[1,0], 
+                    object_pos_array_global[2,0]
+                ]
+                new_grasp_joints_goals_value = self.inverse_kinematics(new_grasp_goal)
+                self.grasp_joints_goals.append(new_grasp_joints_goals_value)
+                self.grasp_traj_duration_list.append(self.grasp_traj_duration)
+                self.grasp_traj_duration_list.append(self.grasp_traj_duration2)
+
+                
 
             elif int(grasp_dir) == 3:
                 self.grasp_goal = self.grasp_goal_bottom
                 self.get_logger().info(termcolor.colored(
                     f'Grasp object from bottom direction', 'cyan'))
                 
-                self.new_grasp_goal = [
+                new_grasp_goal = [
                     self.grasp_goal[0], 
                     self.grasp_goal[1], 
                     self.grasp_goal[2], 
-                    self.object_pos_array_global[0,0], 
-                    self.object_pos_array_global[1,0], 
-                    self.object_pos_array_global[2,0]-0.01
+                    object_pos_array_global[0,0], 
+                    object_pos_array_global[1,0], 
+                    object_pos_array_global[2,0]-0.01
                 ]
-                new_grasp_joints_goals_value = self.inverse_kinematics(self.new_grasp_goal)
-                self.grasp_joints_goals[0] = new_grasp_joints_goals_value
-                
-                self.new_grasp_goal = [
-                    self.grasp_goal[0], 
-                    self.grasp_goal[1], 
-                    self.grasp_goal[2], 
-                    self.object_pos_array_global[0,0], 
-                    self.object_pos_array_global[1,0], 
-                    self.object_pos_array_global[2,0]
-                ]
-                new_grasp_joints_goals_value = self.inverse_kinematics(self.new_grasp_goal)
+                new_grasp_joints_goals_value = self.inverse_kinematics(new_grasp_goal)
                 self.grasp_joints_goals.append(new_grasp_joints_goals_value)
+                
+                new_grasp_goal = [
+                    self.grasp_goal[0], 
+                    self.grasp_goal[1], 
+                    self.grasp_goal[2], 
+                    object_pos_array_global[0,0], 
+                    object_pos_array_global[1,0], 
+                    object_pos_array_global[2,0]
+                ]
+                new_grasp_joints_goals_value = self.inverse_kinematics(new_grasp_goal)
+                self.grasp_joints_goals.append(new_grasp_joints_goals_value)
+                self.grasp_traj_duration_list.append(self.grasp_traj_duration)
+                self.grasp_traj_duration_list.append(self.grasp_traj_duration2)
+
 
             else:
                 self.get_logger().info(termcolor.colored(
@@ -437,38 +533,94 @@ class Node_vision_based_grasp_object_from_table(Node):
                 self.get_logger().info(termcolor.colored('Robotic arm sleeping', 'yellow'))
                 self.arrived_start = False
                 self.task_num = 0
-            elif (self.task_num == 2) and (not self.arrived_start):  # task num 2: move to sleep position
-                self.get_logger().info(termcolor.colored('Robotic arm moving to start position', 'yellow'))
-                self.pub_joint_traj(self.start_joints_goals, self.start_traj_duration)
-                self.get_logger().info(termcolor.colored('Robotic arm started: ready to grasp', 'yellow'))
-                self.arrived_start = True
+            elif (self.task_num == 2):  # task num 2: load to grasp-from-human mode
+                while True:
+                    if (self.task_num == 3) and (not self.arrived_start):  # task num 3: move to human start position
+                        self.get_logger().info(termcolor.colored('Robotic arm moving to start position', 'yellow'))
+                        self.pub_joint_traj(self.start_joints_goals, self.start_traj_duration)
+                        self.get_logger().info(termcolor.colored('Robotic arm started: ready to grasp', 'yellow'))
+                        self.arrived_start = True
 
-            elif (self.task_num == 3) and (self.arrived_start):  # task num 3: grasp object and place to final position
-                time.sleep(1)
-                self.get_logger().info(termcolor.colored('Robotic arm approaching the object', 'yellow'))
-                for i in range(len(self.grasp_joints_goals)):
-                    self.pub_joint_traj(self.grasp_joints_goals[i], self.grasp_traj_duration)  # move to grasp
-                self.get_logger().info(termcolor.colored('Robotic arm arrived object position', 'yellow'))
-                #request soft hand grasp object
-                self.softhand_grasp = True
-                time.sleep(1)
-                self.send_request_softhand()
-                time.sleep(1)
-                
-                self.get_logger().info(termcolor.colored('Robotic arm moving to place object', 'yellow'))
-                self.pub_joint_traj(self.final_joints_goals, self.final_traj_duration)  # move to release
-                self.get_logger().info(termcolor.colored('Robotic arm arrived collection position', 'yellow'))
-                #request soft hand release object
-                self.softhand_grasp = False
-                time.sleep(1)
-                self.send_request_softhand()
-                time.sleep(1)
+                    elif (self.task_num == 4) and (self.arrived_start):  # task num 4: grasp object and place to final position
+                        time.sleep(1)
+                        self.get_logger().info(termcolor.colored('Robotic arm approaching the object', 'yellow'))
+                        for i in range(len(self.grasp_joints_goals)):
+                            self.pub_joint_traj(self.grasp_joints_goals[i], self.grasp_traj_duration_list[i])  # move to grasp
+                        self.get_logger().info(termcolor.colored('Robotic arm arrived object position', 'yellow'))
+                        #request soft hand grasp object
+                        self.softhand_grasp = True
+                        time.sleep(1)
+                        self.send_request_softhand()
+                        time.sleep(1)
+                        
+                        self.get_logger().info(termcolor.colored('Robotic arm moving to place object', 'yellow'))
+                        self.pub_joint_traj(self.final_joints_goals, self.final_traj_duration)  # move to release
+                        self.get_logger().info(termcolor.colored('Robotic arm arrived collection position', 'yellow'))
+                        #request soft hand release object
+                        self.softhand_grasp = False
+                        time.sleep(1)
+                        self.send_request_softhand()
+                        time.sleep(1)
 
-                self.get_logger().info(termcolor.colored('Robotic arm moving back to start position', 'yellow'))
-                self.pub_joint_traj(self.start_joints_goals, self.start_traj_duration)  # move back to start
-                self.get_logger().info(termcolor.colored('Robotic arm started: ready to grasp', 'yellow'))
-                self.arrived_start = True
-                self.task_num = 0
+                        self.get_logger().info(termcolor.colored('Robotic arm moving back to start position', 'yellow'))
+                        self.pub_joint_traj(self.start_joints_goals, self.start_traj_duration)  # move back to start
+                        self.get_logger().info(termcolor.colored('Robotic arm started: ready to grasp', 'yellow'))
+                        self.arrived_start = True
+                        self.task_num = 0
+
+                    elif (self.task_num == 5):    # task num 5: stop grasp-from-human mode
+                        self.task_num = 0
+                        self.arrived_start = False
+                        break
+                    else:
+                        continue
+
+            elif (self.task_num == 6):  # task num 6: load to grasp-from-table mode
+                while True:
+                    if (self.task_num == 7) :  # task num 7: move to table start position
+                        self.get_logger().info(termcolor.colored('Robotic arm moving to start position', 'yellow'))
+                        for i in range(len(self.table_scan_joint_goals)):
+                            self.pub_joint_traj(self.table_scan_joint_goals[i], self.table_scan_duration_list[i])
+                            self.get_logger().info(termcolor.colored('Robotic arm scanning table....', 'yellow'))
+                        self.get_logger().info(termcolor.colored('Table scanning finished, Robotic arm ready to grasp', 'yellow'))
+                        self.arrived_start = True
+                    elif (self.task_num == 8) and (self.arrived_start):  # task num 8: grasp object from table and place to final position
+                        time.sleep(1)
+                        self.get_logger().info(termcolor.colored('Robotic arm start grasping the objects on the table', 'yellow'))
+                        for i in range(len(self.grasp_table_joints_goals)):
+                            self.get_logger().info(termcolor.colored(f'Robotic arm approaching the object{i}', 'yellow'))
+                            self.pub_joint_traj(self.grasp_table_joints_goals[i], self.table_grasp_traj_duration)  # move to grasp
+                            self.get_logger().info(termcolor.colored(f'Robotic arm arrived object{i} position', 'yellow'))
+                            #request soft hand grasp object
+                            self.softhand_grasp = True
+                            time.sleep(1)
+                            self.send_request_softhand()
+                            time.sleep(1)
+                            
+                            self.get_logger().info(termcolor.colored(f'Robotic arm moving to place object{i}', 'yellow'))
+                            self.pub_joint_traj(self.table_scan_joint_goals[0], self.table_scan_duration_list[0])  # move back to start
+                            self.pub_joint_traj(self.final_joints_goals, self.final_traj_duration)  # move to release
+                            self.get_logger().info(termcolor.colored(f'Robotic arm arrived collection position', 'yellow'))
+                            #request soft hand release object
+                            self.softhand_grasp = False
+                            time.sleep(1)
+                            self.send_request_softhand()
+                            time.sleep(1)
+
+                            self.get_logger().info(termcolor.colored('Robotic arm moving back to start position', 'yellow'))
+                            self.pub_joint_traj(self.table_scan_joint_goals[0], self.table_scan_duration_list[0])  # move back to start
+                            self.get_logger().info(termcolor.colored('Robotic arm ready to grasp the next object', 'yellow'))
+                            self.arrived_start = True
+                            self.task_num = 0
+
+                    
+                    elif (self.task_num == 9):    # task num 9: stop grasp-from-table mode
+                        self.task_num = 0
+                        self.arrived_start = False
+                        break
+                    else:
+                        continue                   
+
             else:
                 continue
                 
