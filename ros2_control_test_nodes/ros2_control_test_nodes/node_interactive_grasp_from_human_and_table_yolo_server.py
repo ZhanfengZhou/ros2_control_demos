@@ -67,6 +67,14 @@ class Node_vision_based_grasp(Node):
         self.declare_parameter("give_hand_traj_duration", 6)
         self.declare_parameter("shake_hand_traj_duration", 6)
 
+        self.declare_parameter("flag_goal_start")
+        self.declare_parameter("flag_goal_start2")
+        self.declare_parameter("flag_goal_middle")
+        self.declare_parameter("flag_goal_left")
+        self.declare_parameter("flag_goal_right")
+        self.declare_parameter("flag_goal_final")
+        self.declare_parameter("flag_traj_duration", 3)
+
 
         ## Read parameters
         controller_name = self.get_parameter("controller_name").value
@@ -93,7 +101,7 @@ class Node_vision_based_grasp(Node):
         self.grasp_goal_table3 = self.get_parameter("grasp_goal_table3").value
         self.grasp_goal_table = []
         self.grasp_goal_table.append(self.grasp_goal_table1)
-        self.grasp_goal_table.append(self.grasp_goal_table2)
+        #self.grasp_goal_table.append(self.grasp_goal_table2)
         self.grasp_goal_table.append(self.grasp_goal_table3)
         self.scan_dis_table = self.get_parameter("scan_dis_table").value
         self.final_goal = self.get_parameter("final_goal").value
@@ -126,10 +134,11 @@ class Node_vision_based_grasp(Node):
         self.table_scan_duration_list.append(self.table_scan_traj_duration)
 
         self.grasp_table_joints_goals = []
-        for i in range(3):
+        for i in range(len(self.grasp_goal_table)):
             new_grasp_goal_table = self.grasp_goal_table[i]
             new_grasp_joints_goals_value = self.inverse_kinematics(new_grasp_goal_table)
             self.grasp_table_joints_goals.append(new_grasp_joints_goals_value)
+
 
         ## shake hand parameter
         self.give_hand_goal = self.get_parameter("give_hand_goal").value
@@ -151,8 +160,6 @@ class Node_vision_based_grasp(Node):
         self.shaking_hand_joints_goal_list.append(self.shake_hand_down_joints_goal)
         self.shaking_hand_joints_goal_list.append(self.shake_hand_up_joints_goal)
         self.shaking_hand_joints_goal_list.append(self.shake_hand_down_joints_goal)
-        self.shaking_hand_joints_goal_list.append(self.shake_hand_up_joints_goal)
-        self.shaking_hand_joints_goal_list.append(self.shake_hand_down_joints_goal)
         self.shaking_hand_joints_goal_list.append(self.shake_hand_joints_goal)
 
         self.give_hand_traj_duration = self.get_parameter("give_hand_traj_duration").value
@@ -163,9 +170,38 @@ class Node_vision_based_grasp(Node):
         self.shaking_hand_duration_list.append(self.shake_hand_traj_duration*2)
         self.shaking_hand_duration_list.append(self.shake_hand_traj_duration*2)
         self.shaking_hand_duration_list.append(self.shake_hand_traj_duration*2)
-        self.shaking_hand_duration_list.append(self.shake_hand_traj_duration*2)
-        self.shaking_hand_duration_list.append(self.shake_hand_traj_duration*2)
         self.shaking_hand_duration_list.append(self.shake_hand_traj_duration)
+
+
+        ## flag grasp parameter
+        self.flag_goal_start = self.get_parameter("flag_goal_start").value
+        self.flag_goal_start2 = self.get_parameter("flag_goal_start2").value
+        self.flag_goal_middle = self.get_parameter("flag_goal_middle").value
+        self.flag_goal_left = self.get_parameter("flag_goal_left").value
+        self.flag_goal_right = self.get_parameter("flag_goal_right").value
+        self.flag_goal_final = self.get_parameter("flag_goal_final").value
+        self.flag_traj_duration = self.get_parameter("flag_traj_duration").value
+
+        self.flag_goal_start_joints_goal = self.inverse_kinematics(self.flag_goal_start)
+        self.flag_goal_start2_joints_goal = self.inverse_kinematics(self.flag_goal_start2)
+        self.flag_goal_middle_joints_goal = self.inverse_kinematics(self.flag_goal_middle)
+        self.flag_goal_left_joints_goal = self.inverse_kinematics(self.flag_goal_left)
+        self.flag_goal_right_joints_goal = self.inverse_kinematics(self.flag_goal_right)
+        self.flag_goal_final_joints_goal = self.inverse_kinematics(self.flag_goal_final)
+
+        self.flag_move_joints_goal_list = []
+        self.flag_move_joints_goal_list.append(self.flag_goal_left_joints_goal)
+        self.flag_move_joints_goal_list.append(self.flag_goal_right_joints_goal)
+        self.flag_move_joints_goal_list.append(self.flag_goal_left_joints_goal)
+        self.flag_move_joints_goal_list.append(self.flag_goal_right_joints_goal)
+        self.flag_move_joints_goal_list.append(self.start_joints_goals)
+
+        self.flag_move_duration_list = []
+        self.flag_move_duration_list.append(self.flag_traj_duration)
+        self.flag_move_duration_list.append(self.flag_traj_duration*2)
+        self.flag_move_duration_list.append(self.flag_traj_duration*2)
+        self.flag_move_duration_list.append(self.flag_traj_duration*2)
+        self.flag_move_duration_list.append(self.flag_traj_duration)
 
 
         ## Create a publisher to publish joint goal to robotic arm with a timer
@@ -510,8 +546,8 @@ class Node_vision_based_grasp(Node):
                 self.pub_joint_traj(self.sleep_joints_goals, self.sleep_traj_duration)
                 self.get_logger().info(termcolor.colored('Robotic arm sleeping', 'yellow'))
                 self.arrived_start = False
-                self.shakehand_arrived = False
                 self.task_num = 0
+
             elif (self.task_num == 2):  # task num 2: load to grasp-from-human mode
                 while True:
                     if (self.task_num == 3) and (not self.arrived_start):  # task num 3: move to human start position
@@ -519,7 +555,6 @@ class Node_vision_based_grasp(Node):
                         self.pub_joint_traj(self.start_joints_goals, self.start_traj_duration)
                         self.get_logger().info(termcolor.colored('Robotic arm started: ready to grasp', 'yellow'))
                         self.arrived_start = True
-                        self.shakehand_arrived = False
 
                     elif (self.task_num == 4) and (self.arrived_start):  # task num 4: grasp object and place to final position
                         time.sleep(2)
@@ -534,7 +569,7 @@ class Node_vision_based_grasp(Node):
                         self.get_logger().info(termcolor.colored('Robotic arm arrived object position', 'yellow'))
                         #request soft hand grasp object
                         time.sleep(0.5)
-                        self.send_request_softhand(False)
+                        self.send_request_softhand(True)
                         time.sleep(5)
                         
                         self.get_logger().info(termcolor.colored('Robotic arm moving to place object', 'yellow'))
@@ -549,81 +584,47 @@ class Node_vision_based_grasp(Node):
                         self.pub_joint_traj(self.start_joints_goals, self.start_traj_duration)  # move back to start
                         self.get_logger().info(termcolor.colored('Robotic arm started: ready to grasp', 'yellow'))
                         self.arrived_start = True
-                        self.shakehand_arrived = False
                         self.task_num = 0
 
-                    elif (self.task_num == 12) and (self.arrived_start):  # task num 4: grasp object and place to final position
+                    elif (self.task_num == 12) and (self.arrived_start):  # task num 4: grasp flag and place to final position
                         time.sleep(2)
                         self.get_logger().info(termcolor.colored('Robotic arm approaching the flag', 'yellow'))
 
-                        for i in range(len(self.grasp_joints_goals)):
-                            self.pub_joint_traj(self.grasp_joints_goals[i], self.grasp_traj_duration_list[i])  # move to grasp
+                        self.pub_joint_traj(self.flag_goal_start_joints_goal, self.start_traj_duration)  # move to grasp
+                        self.pub_joint_traj(self.flag_goal_start2_joints_goal, self.start_traj_duration)  # move to grasp
                         self.get_logger().info(termcolor.colored('Robotic arm arrived flag position', 'yellow'))
                         
+                        #request soft hand grasp object
+                        time.sleep(0.5)
+                        self.send_request_softhand(True)
+                        time.sleep(5)
+
+                        self.pub_joint_traj(self.flag_goal_middle_joints_goal, self.start_traj_duration)  # move to release
+
+                        for i in range(len(self.flag_move_joints_goal_list)):
+                            self.pub_joint_traj(self.flag_move_joints_goal_list[i], self.flag_move_duration_list[i])
+                        
+                        time.sleep(3)
+                        self.get_logger().info(termcolor.colored('Robotic arm moving to place object', 'yellow'))
+                        self.pub_joint_traj(self.flag_goal_final_joints_goal, self.final_traj_duration)  # move to release
+
                         self.task_num = 0
                         while not (self.task_num == 12):
                             pass
                         
-                        #request soft hand grasp object
-                        time.sleep(0.5)
-                        self.send_request_softhand(False)
-                        time.sleep(5)
-                        
-                        self.get_logger().info(termcolor.colored('Robotic arm moving to place object', 'yellow'))
-                        self.pub_joint_traj(self.final_joints_goals, self.final_traj_duration)  # move to release
-                        self.get_logger().info(termcolor.colored('Robotic arm arrived collection position', 'yellow'))
                         #request soft hand release object
                         time.sleep(0.5)
                         self.send_request_softhand(False)
                         time.sleep(5)
 
-                        self.get_logger().info(termcolor.colored('Robotic arm moving back to start position', 'yellow'))
-                        self.pub_joint_traj(self.start_joints_goals, self.start_traj_duration)  # move back to start
-                        self.get_logger().info(termcolor.colored('Robotic arm started: ready to grasp', 'yellow'))
-                        self.arrived_start = True
-                        self.shakehand_arrived = False
                         self.task_num = 0
+                        self.arrived_start = False
+
 
                     elif (self.task_num == 5):    # task num 5: stop grasp-from-human mode
                         self.task_num = 0
                         self.arrived_start = False
-                        self.shakehand_arrived = False
                         break
-
-                    elif (self.task_num == 10):    # task num 10: shake hand with human hand
-                        self.get_logger().info(termcolor.colored('give hand to human hands', 'yellow'))
-                        if not self.shakehand_arrived:
-                            self.pub_joint_traj(self.give_hand_joints_goal, self.start_traj_duration)  # move back to start
-                            time.sleep(1)
-                        self.pub_joint_traj(self.shake_hand_joints_goal, self.give_hand_traj_duration)  # move back to start
-                        self.get_logger().info(termcolor.colored('ready to shake hand', 'yellow'))
-                        self.arrived_start = False
-                        self.shakehand_arrived = True
-                        self.task_num = 0
-
-                    elif (self.task_num == 11) and (self.shakehand_arrived):    # task num 10: shake hand with human hand
-                        self.get_logger().info(termcolor.colored('start shaking hand with human hands', 'yellow'))
-                        
-                        #request soft hand grasp human hand
-                        time.sleep(0.2)
-                        self.send_request_softhand_shakehand(True)
-                        time.sleep(3)
-
-                        # shaking hand
-                        for i in range(len(self.shaking_hand_joints_goal_list)):
-                            self.pub_joint_traj(self.shaking_hand_joints_goal_list[i], self.shaking_hand_duration_list[i])
-                        
-                        #request soft hand release human hand
-                        time.sleep(0.2)
-                        self.send_request_softhand_shakehand(False)
-                        time.sleep(3)
-                        
-                        # move back and ready to shake again
-                        self.pub_joint_traj(self.shake_hand_joints_goal, self.give_hand_traj_duration)  # move back to start
-
-                        self.arrived_start = False
-                        self.shakehand_arrived = True
-                        self.task_num = 0
                     else:
                         continue
 
